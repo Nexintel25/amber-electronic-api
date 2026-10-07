@@ -1,0 +1,30 @@
+{
+  "name": "amber-electronic-api",
+  "version": "1.0.0",
+  "main": "index.js",
+ 
+    "scripts": {
+  "start": "node src/server.js",
+  "dev": "nodemon src/server.js"
+
+
+  },
+  
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Nexintel25/amber-electronic-api/issues"
+  },
+  "homepage": "https://github.com/Nexintel25/amber-electronic-api#readme",
+  "description": "",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "mongoose": "^9.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
