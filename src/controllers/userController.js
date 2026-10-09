@@ -3,7 +3,7 @@ import { createUser as createUserModel } from "../models/userModel.js";
 
 // SP error code -> HTTP status
 const STATUS_BY_CODE = {
-  0: 201,
+  0: 200,
   1001: 400, // Name is required
   1002: 400, // Valid email is required
   1003: 400, // Password hash is required
