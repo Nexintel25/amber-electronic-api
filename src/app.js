@@ -7,6 +7,7 @@ import morgan from "morgan";
 // routes
 import buildingRoutes from "./routes/buildingRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+import complaintTypeRoutes from "./routes/complaintTypeRoutes.js";
 
 const app = express();
 
@@ -31,6 +32,7 @@ app.use(morgan(morganFormat));
 // Routes
 app.use("/api/buildings", buildingRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/complaint-types", complaintTypeRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Amber Electronic API is running" });
