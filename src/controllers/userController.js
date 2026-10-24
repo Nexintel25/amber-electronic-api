@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import {
   createUser as createUserModel,
   createVendor as createVendorModel,
+  createComplaint as createComplaintModel,
 } from "../models/userModel.js";
 
 // SP error code -> HTTP status
@@ -120,6 +121,88 @@ export const createVendor = async (req, res) => {
     });
   } catch (err) {
     console.error("createVendor error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_create_complaint error code -> HTTP status
+const COMPLAINT_STATUS_BY_CODE = {
+  0: 200,
+  1501: 404, // User not found or inactive
+  1502: 403, // Your role cannot raise complaints
+  1503: 404, // Building not found or inactive
+  1504: 403, // You do not have access to this building
+  1505: 400, // Complaint title is required
+  1506: 400, // Description is required
+  1507: 400, // Area / location is required
+  1508: 400, // Invalid category
+  1509: 400, // Invalid complaint type
+  1510: 409, // No vendor is mapped to this building
+  1511: 400, // Maximum 10 photos allowed
+  1512: 400, // Maximum 2 videos allowed
+  1513: 400, // media must be a JSON array
+  1514: 400, // Invalid media (kind / file_url)
+  5000: 500, // Database error
+};
+
+// is_draft: 1 / "1" / true / "true" -> draft, anything else (or missing) -> submit
+const parseIsDraft = (value) =>
+  value === 1 || value === true || value === "1" || value === "true";
+
+export const createComplaint = async (req, res) => {
+  try {
+    const {
+      building_id,
+      category_id,
+      complaint_type_id,
+      title,
+      description,
+      area_location,
+      asset_code,
+      preferred_visit,
+      latitude,
+      longitude,
+      location_accuracy,
+      contact_name,
+      contact_phone,
+      media,
+      is_draft,
+    } = req.body;
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? req.body.user_id;
+
+    const result = await createComplaintModel({
+      userId,
+      buildingId: building_id,
+      categoryId: category_id,
+      complaintTypeId: complaint_type_id,
+      title,
+      description,
+      areaLocation: area_location,
+      assetCode: asset_code,
+      preferredVisit: preferred_visit,
+      latitude,
+      longitude,
+      locationAccuracy: location_accuracy,
+      contactName: contact_name,
+      contactPhone: contact_phone,
+      media,
+      isDraft: parseIsDraft(is_draft),
+    });
+
+    // TODO: send FCM push to result.pushRecipients, then set notifications.is_pushed = 1
+
+    return res.status(COMPLAINT_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("createComplaint error:", err);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });

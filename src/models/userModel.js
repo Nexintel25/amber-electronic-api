@@ -74,3 +74,65 @@ export const createVendor = async ({
     data: vendor ? { ...vendor, buildings } : null,
   };
 };
+
+// Calls sp_create_complaint.
+// Result set 1: { error_code, error_message, complaint_id, complaint_no }
+// Result set 2 (only on success): created complaint details
+// Result set 3 (only on success): push recipients { notification_id, user_id, message, fcm_token }
+export const createComplaint = async ({
+  userId,
+  buildingId,
+  categoryId,
+  complaintTypeId,
+  title,
+  description,
+  areaLocation,
+  assetCode,
+  preferredVisit,
+  latitude,
+  longitude,
+  locationAccuracy,
+  contactName,
+  contactPhone,
+  media,
+  isDraft,
+}) => {
+  const [results] = await pool.query(
+    "CALL sp_create_complaint(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [
+      userId ?? null,
+      buildingId ?? null,
+      categoryId ?? null,
+      complaintTypeId ?? null,
+      title ?? null,
+      description ?? null,
+      areaLocation ?? null,
+      assetCode ?? null,
+      preferredVisit ?? null,
+      latitude ?? null,
+      longitude ?? null,
+      locationAccuracy ?? null,
+      contactName ?? null,
+      contactPhone ?? null,
+      // SP expects a JSON array like [{ kind, file_url, ... }]; non-arrays are rejected by SP (1513)
+      // form-data sends it as a string already, so pass strings through as-is
+      media == null
+        ? null
+        : typeof media === "string"
+          ? media
+          : JSON.stringify(media),
+      isDraft ? 1 : 0,
+    ]
+  );
+
+  const status = results[0][0];
+  const complaint = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+  const pushRecipients = Array.isArray(results[2]) ? results[2] : [];
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data: complaint,
+    pushRecipients,
+  };
+};

@@ -11,6 +11,9 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   connectTimeout: 30000,
+  // return DATE columns as "YYYY-MM-DD" instead of a JS Date at local midnight,
+  // which JSON-serializes to the previous day in UTC (e.g. IST +05:30)
+  dateStrings: ["DATE"],
 });
 
 export default pool;
