@@ -186,3 +186,47 @@ export const getCreatorDashboard = async ({ userId, onlyMine, activeLimit }) => 
     data,
   };
 };
+
+// Calls sp_pm_worker_detail (project managers only).
+// Result set 1: { error_code, error_message }
+// Result set 2 (only on success): worker detail row
+export const getPmWorkerDetail = async ({ userId, workerId }) => {
+  const [results] = await pool.query("CALL sp_pm_worker_detail(?, ?)", [
+    userId ?? null,
+    workerId ?? null,
+  ]);
+
+  const status = results[0][0];
+  const data = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data,
+  };
+};
+
+// Calls sp_set_pm_vendors.
+// Result set 1: { error_code, error_message }
+// Result set 2 (only on success, if the SP returns it): vendors now mapped to the PM
+export const setPmVendors = async ({ userId, pmId, vendorIds }) => {
+  const [results] = await pool.query("CALL sp_set_pm_vendors(?, ?, ?)", [
+    userId ?? null,
+    pmId ?? null,
+    // SP expects a JSON array like [1,2,3]; non-arrays are rejected by SP
+    vendorIds == null
+      ? null
+      : typeof vendorIds === "string"
+        ? vendorIds
+        : JSON.stringify(vendorIds),
+  ]);
+
+  const status = results[0][0];
+  const data = Array.isArray(results[1]) ? results[1] : [];
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data,
+  };
+};

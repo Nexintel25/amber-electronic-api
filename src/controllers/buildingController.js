@@ -5,6 +5,8 @@ import {
   getAdminDashboard as getAdminDashboardModel,
   getPmDashboard as getPmDashboardModel,
   getPmVendors as getPmVendorsModel,
+  getPmWorkerDetail as getPmWorkerDetailModel,
+  setPmVendors as setPmVendorsModel,
   getCreatorDashboard as getCreatorDashboardModel,
 } from "../models/buildingModel.js";
 
@@ -247,6 +249,64 @@ export const getCreatorDashboard = async (req, res) => {
     });
   } catch (err) {
     console.error("getCreatorDashboard error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_pm_worker_detail / sp_set_pm_vendors: only 0 and 5000 are known here,
+// any other SP error code falls back to 400
+const PM_COMMON_STATUS_BY_CODE = {
+  0: 200,
+  5000: 500, // Database error
+};
+
+export const getPmWorkerDetail = async (req, res) => {
+  try {
+    const input = { ...req.query, ...req.body };
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? input.user_id;
+
+    const result = await getPmWorkerDetailModel({
+      userId,
+      workerId: input.worker_id,
+    });
+
+    return res.status(PM_COMMON_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("getPmWorkerDetail error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+export const setPmVendors = async (req, res) => {
+  try {
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? req.body.user_id;
+
+    const result = await setPmVendorsModel({
+      userId,
+      pmId: req.body.pm_id,
+      vendorIds: req.body.vendor_ids,
+    });
+
+    return res.status(PM_COMMON_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("setPmVendors error:", err);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });

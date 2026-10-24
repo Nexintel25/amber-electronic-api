@@ -5,6 +5,8 @@ import {
   getAdminDashboard,
   getPmDashboard,
   getPmVendors,
+  getPmWorkerDetail,
+  setPmVendors,
   getCreatorDashboard,
 } from "../controllers/buildingController.js";
 
@@ -15,6 +17,8 @@ router.post("/checkMedia", checkMedia);
 router.post("/getAdminDashboard", getAdminDashboard);
 router.post("/getPmDashboard", getPmDashboard);
 router.post("/getPmVendors", getPmVendors);
+router.post("/getPmWorkerDetail", getPmWorkerDetail);
+router.post("/setPmVendors", setPmVendors);
 router.post("/getCreatorDashboard", getCreatorDashboard);
 
 export default router;
