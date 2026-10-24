@@ -2,6 +2,7 @@ import {
   getComplaintTypes as getComplaintTypesModel,
   getBuildings as getBuildingsModel,
   getVendors as getVendorsModel,
+  getUserTypes as getUserTypesModel,
 } from "../models/complaintTypeModel.js";
 
 // SP error code -> HTTP status
@@ -93,6 +94,29 @@ export const getVendors = async (req, res) => {
     });
   } catch (err) {
     console.error("getVendors error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_get_user_types uses the same codes as sp_get_complaint_types (0, 5000)
+export const getUserTypes = async (req, res) => {
+  try {
+    const onlyActive = parseOnlyActive(
+      req.body?.only_active ?? req.query.only_active
+    );
+
+    const result = await getUserTypesModel({ onlyActive });
+
+    return res.status(STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("getUserTypes error:", err);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });

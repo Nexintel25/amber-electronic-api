@@ -57,3 +57,21 @@ export const getVendors = async ({ userId, onlyActive, search }) => {
     data,
   };
 };
+
+// Calls sp_get_user_types.
+// Result set 1: { error_code, error_message }
+// Result set 2 (only on success): user type rows
+export const getUserTypes = async ({ onlyActive }) => {
+  const [results] = await pool.query("CALL sp_get_user_types(?)", [
+    onlyActive ? 1 : 0,
+  ]);
+
+  const status = results[0][0];
+  const data = Array.isArray(results[1]) ? results[1] : [];
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data,
+  };
+};
