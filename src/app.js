@@ -9,6 +9,7 @@ import buildingRoutes from "./routes/buildingRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import complaintTypeRoutes from "./routes/complaintTypeRoutes.js";
 import complaintRoutes from "./routes/complaintRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
 
 const app = express();
 
@@ -31,6 +32,7 @@ const morganFormat = process.env.NODE_ENV === "development" ? "dev" : "common";
 app.use(morgan(morganFormat));
 
 // Routes
+app.use("/api/auth", authRoutes);
 app.use("/api/buildings", buildingRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/complaint-types", complaintTypeRoutes);
