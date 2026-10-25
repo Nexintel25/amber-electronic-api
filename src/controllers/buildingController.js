@@ -8,6 +8,10 @@ import {
   getPmWorkerDetail as getPmWorkerDetailModel,
   setPmVendors as setPmVendorsModel,
   getCreatorDashboard as getCreatorDashboardModel,
+  vendorApprove as vendorApproveModel,
+  vendorRework as vendorReworkModel,
+  getReportFilterOptions as getReportFilterOptionsModel,
+  getPenaltyReport as getPenaltyReportModel,
 } from "../models/buildingModel.js";
 
 // SP error code -> HTTP status
@@ -307,6 +311,188 @@ export const setPmVendors = async (req, res) => {
     });
   } catch (err) {
     console.error("setPmVendors error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_vendor_approve error code -> HTTP status
+const VENDOR_APPROVE_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1602: 404, // Complaint not found or you do not have access
+  1603: 403, // Only the vendor can approve the work
+  1605: 409, // Complaint is not PENDING_APPROVAL / changed by someone else
+  5000: 500, // Database error
+};
+
+export const vendorApprove = async (req, res) => {
+  try {
+    const { complaint_id, remarks } = req.body;
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? req.body.user_id;
+
+    const result = await vendorApproveModel({
+      userId,
+      complaintId: complaint_id,
+      remarks,
+    });
+
+    // TODO: send FCM push to result.pushRecipients, then set notifications.is_pushed = 1
+
+    return res.status(VENDOR_APPROVE_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("vendorApprove error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_vendor_rework error code -> HTTP status
+const VENDOR_REWORK_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1602: 404, // Complaint not found or you do not have access
+  1603: 403, // Only the vendor can send the work back for rework
+  1605: 409, // Complaint is not PENDING_APPROVAL / changed by someone else
+  1606: 404, // Worker not found, inactive, or not under this vendor
+  1901: 400, // Rework reason is required
+  5000: 500, // Database error
+};
+
+export const vendorRework = async (req, res) => {
+  try {
+    const { complaint_id, reason, worker_id } = req.body;
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? req.body.user_id;
+
+    // worker_id is optional: missing -> same worker gets the rework
+    const result = await vendorReworkModel({
+      userId,
+      complaintId: complaint_id,
+      reason,
+      workerId: worker_id,
+    });
+
+    // TODO: send FCM push to result.pushRecipients, then set notifications.is_pushed = 1
+
+    return res.status(VENDOR_REWORK_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("vendorRework error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_report_filter_options error code -> HTTP status
+const REPORT_FILTER_OPTIONS_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Your role is not allowed to do this
+  5000: 500, // Database error
+};
+
+export const getReportFilterOptions = async (req, res) => {
+  try {
+    const input = { ...req.query, ...req.body };
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? input.user_id;
+
+    const result = await getReportFilterOptionsModel({ userId });
+
+    return res
+      .status(REPORT_FILTER_OPTIONS_STATUS_BY_CODE[result.code] ?? 400)
+      .json({
+        success: result.code === 0,
+        code: result.code,
+        message: result.message,
+        data: result.data,
+      });
+  } catch (err) {
+    console.error("getReportFilterOptions error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_penalty_report error code -> HTTP status
+const PENALTY_REPORT_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Your role is not allowed to do this
+  2001: 400, // Invalid report type
+  2002: 400, // From date is after To date
+  2003: 403, // Vendor is not allowed for you
+  2004: 400, // Invalid date_by (raised / closed / deadline)
+  5000: 500, // Database error
+};
+
+export const getPenaltyReport = async (req, res) => {
+  try {
+    const input = { ...req.query, ...req.body };
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? input.user_id;
+
+    // same defaults as the SP: page >= 1, limit 1..100 (default 20)
+    const page = Math.max(parseInt(input.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(input.limit, 10) || 20, 1), 100);
+
+    // export: 1 / "1" / true / "true" -> all rows (max 50000), no paging
+    const isExport =
+      input.export === 1 ||
+      input.export === true ||
+      input.export === "1" ||
+      input.export === "true";
+
+    const result = await getPenaltyReportModel({
+      userId,
+      reportType: input.report_type,
+      fromDate: input.from_date, // "YYYY-MM-DD"
+      toDate: input.to_date, // "YYYY-MM-DD"
+      dateBy: input.date_by,
+      vendorId: input.vendor_id,
+      search: input.search,
+      page,
+      limit,
+      isExport,
+    });
+
+    return res.status(PENALTY_REPORT_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      summary: result.summary,
+      vendor_summary: result.vendorSummary,
+      data: result.data,
+      pagination: isExport
+        ? null
+        : {
+            page,
+            limit,
+            total: result.total,
+            total_pages: Math.ceil(result.total / limit),
+          },
+    });
+  } catch (err) {
+    console.error("getPenaltyReport error:", err);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });

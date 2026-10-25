@@ -229,5 +229,196 @@ export const workerSubmit = async ({ userId, complaintId, note, media }) => {
   };
 };
 
+// Calls sp_vendor_verification_list (vendors only).
+// Result set 1: { error_code, error_message, total_count }
+// Result set 2 (only on success): tab counts { pending_count, rework_count }
+// Result set 3 (only on success): one page of complaint rows
+// Result set 4 (only on success): photos of those complaints (initial + current cycle before/after)
+export const getVendorVerificationList = async ({
+  userId,
+  view,
+  search,
+  buildingId,
+  workerId,
+  page,
+  limit,
+}) => {
+  const [results] = await pool.query(
+    "CALL sp_vendor_verification_list(?, ?, ?, ?, ?, ?, ?)",
+    [
+      userId ?? null,
+      view ?? null,
+      search ?? null,
+      buildingId ?? null,
+      workerId ?? null,
+      page,
+      limit,
+    ]
+  );
 
+  const statusRow = results[0][0];
+  // SUM() comes back as a DECIMAL string, so convert the tab counts to numbers
+  const tabRow = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+  const tabs = tabRow
+    ? {
+        pending_count: Number(tabRow.pending_count),
+        rework_count: Number(tabRow.rework_count),
+      }
+    : null;
+  const complaints = Array.isArray(results[2]) ? results[2] : [];
+  const media = Array.isArray(results[3]) ? results[3] : [];
 
+  // attach each complaint's photos to it
+  const data = complaints.map((c) => ({
+    ...c,
+    media: media.filter((m) => m.complaint_id === c.complaint_id),
+  }));
+
+  return {
+    code: statusRow.error_code,
+    message: statusRow.error_message,
+    total: statusRow.total_count,
+    tabs,
+    data,
+  };
+};
+
+// Calls sp_create_support_ticket.
+// Result set 1: { error_code, error_message, ticket_id, ticket_no }
+// Result set 2 (only on success): created ticket row
+// Result set 3 (only on success): push recipients (super admins) { notification_id, user_id, event_type, message, fcm_token }
+export const createSupportTicket = async ({
+  userId,
+  subject,
+  area,
+  severity,
+  details,
+  contactName,
+  contactPhone,
+}) => {
+  const [results] = await pool.query(
+    "CALL sp_create_support_ticket(?, ?, ?, ?, ?, ?, ?)",
+    [
+      userId ?? null,
+      subject ?? null,
+      area ?? null,
+      severity ?? null,
+      details ?? null,
+      contactName ?? null,
+      contactPhone ?? null,
+    ]
+  );
+
+  const status = results[0][0];
+  const ticket = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+  const pushRecipients = Array.isArray(results[2]) ? results[2] : [];
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data: ticket,
+    pushRecipients,
+  };
+};
+
+// Calls sp_get_my_tickets.
+// Result set 1: { error_code, error_message, total_count }
+// Result set 2 (only on success): tab counts { open_count, in_progress_count, resolved_count }
+// Result set 3 (only on success): one page of the user's support tickets
+export const getMyTickets = async ({ userId, status, page, limit }) => {
+  const [results] = await pool.query("CALL sp_get_my_tickets(?, ?, ?, ?)", [
+    userId ?? null,
+    status ?? null,
+    page,
+    limit,
+  ]);
+
+  const statusRow = results[0][0];
+
+  // SUM() comes back as a DECIMAL string, so convert the tab counts to numbers
+  const tabRow = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+  const tabs = tabRow
+    ? {
+        open_count: Number(tabRow.open_count),
+        in_progress_count: Number(tabRow.in_progress_count),
+        resolved_count: Number(tabRow.resolved_count),
+      }
+    : null;
+
+  return {
+    code: statusRow.error_code,
+    message: statusRow.error_message,
+    total: statusRow.total_count,
+    tabs,
+    data: Array.isArray(results[2]) ? results[2] : [],
+  };
+};
+
+// Calls sp_admin_get_tickets (super admin only).
+// Result set 1: { error_code, error_message, total_count }
+// Result set 2 (only on success): tab counts (every filter except status)
+// Result set 3 (only on success): one page of tickets, unresolved first, critical first
+export const adminGetTickets = async ({
+  userId,
+  status,
+  severity,
+  area,
+  search,
+  fromDate,
+  toDate,
+  page,
+  limit,
+}) => {
+  const [results] = await pool.query(
+    "CALL sp_admin_get_tickets(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [
+      userId ?? null,
+      status ?? null,
+      severity ?? null,
+      area ?? null,
+      search ?? null,
+      fromDate ?? null,
+      toDate ?? null,
+      page,
+      limit,
+    ]
+  );
+
+  const statusRow = results[0][0];
+
+  // SUM() comes back as a DECIMAL string, so convert the tab counts to numbers
+  const tabRow = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+  const tabs = tabRow
+    ? Object.fromEntries(Object.entries(tabRow).map(([k, v]) => [k, Number(v)]))
+    : null;
+
+  return {
+    code: statusRow.error_code,
+    message: statusRow.error_message,
+    total: statusRow.total_count,
+    tabs,
+    data: Array.isArray(results[2]) ? results[2] : [],
+  };
+};
+
+// Calls sp_update_ticket_status (super admin only).
+// Result set 1: { error_code, error_message }
+// Result set 2 (only on success): updated ticket row
+// Result set 3 (only on success): push recipients (ticket owner) { notification_id, user_id, event_type, message, fcm_token }
+export const updateTicketStatus = async ({ userId, ticketId, status, note }) => {
+  const [results] = await pool.query(
+    "CALL sp_update_ticket_status(?, ?, ?, ?)",
+    [userId ?? null, ticketId ?? null, status ?? null, note ?? null]
+  );
+
+  const statusRow = results[0][0];
+  const ticket = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+  const pushRecipients = Array.isArray(results[2]) ? results[2] : [];
+
+  return {
+    code: statusRow.error_code,
+    message: statusRow.error_message,
+    data: ticket,
+    pushRecipients,
+  };
+};

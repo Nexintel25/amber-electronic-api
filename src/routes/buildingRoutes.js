@@ -8,6 +8,10 @@ import {
   getPmWorkerDetail,
   setPmVendors,
   getCreatorDashboard,
+  vendorApprove,
+  vendorRework,
+  getReportFilterOptions,
+  getPenaltyReport,
 } from "../controllers/buildingController.js";
 
 const router = express.Router();
@@ -20,5 +24,9 @@ router.post("/getPmVendors", getPmVendors);
 router.post("/getPmWorkerDetail", getPmWorkerDetail);
 router.post("/setPmVendors", setPmVendors);
 router.post("/getCreatorDashboard", getCreatorDashboard);
+router.post("/vendorApprove", vendorApprove);
+router.post("/vendorRework", vendorRework);
+router.post("/getReportFilterOptions", getReportFilterOptions);
+router.post("/getPenaltyReport", getPenaltyReport);
 
 export default router;

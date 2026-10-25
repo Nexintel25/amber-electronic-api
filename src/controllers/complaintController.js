@@ -8,6 +8,11 @@ import {
   workerCheckin as workerCheckinModel,
   workerStart as workerStartModel,
   workerSubmit as workerSubmitModel,
+  getVendorVerificationList as getVendorVerificationListModel,
+  createSupportTicket as createSupportTicketModel,
+  getMyTickets as getMyTicketsModel,
+  adminGetTickets as adminGetTicketsModel,
+  updateTicketStatus as updateTicketStatusModel,
 } from "../models/complaintModel.js";
 
 // sp_get_building_complaint_types error code -> HTTP status
@@ -366,6 +371,253 @@ export const workerSubmit = async (req, res) => {
     });
   } catch (err) {
     console.error("workerSubmit error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_vendor_verification_list error code -> HTTP status
+const VENDOR_VERIFICATION_LIST_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Your role is not allowed to do this (vendors only)
+  1606: 404, // Worker not found, inactive, or not under this vendor
+  1902: 400, // Invalid view (pending / rework / all)
+  1903: 403, // Building is not under your vendor
+  5000: 500, // Database error
+};
+
+export const getVendorVerificationList = async (req, res) => {
+  try {
+    const input = { ...req.query, ...req.body };
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? input.user_id;
+
+    // same defaults as the SP: page >= 1, limit 1..100 (default 20); view defaults to "pending" in the SP
+    const page = Math.max(parseInt(input.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(input.limit, 10) || 20, 1), 100);
+
+    const result = await getVendorVerificationListModel({
+      userId,
+      view: input.view,
+      search: input.search,
+      buildingId: input.building_id,
+      workerId: input.worker_id,
+      page,
+      limit,
+    });
+
+    return res
+      .status(VENDOR_VERIFICATION_LIST_STATUS_BY_CODE[result.code] ?? 400)
+      .json({
+        success: result.code === 0,
+        code: result.code,
+        message: result.message,
+        tabs: result.tabs,
+        data: result.data,
+        pagination: {
+          page,
+          limit,
+          total: result.total,
+          total_pages: Math.ceil(result.total / limit),
+        },
+      });
+  } catch (err) {
+    console.error("getVendorVerificationList error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_create_support_ticket error code -> HTTP status
+const SUPPORT_TICKET_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  2101: 400, // Subject is required
+  2102: 400, // Invalid area
+  2103: 400, // Invalid severity
+  2104: 400, // Contact number is required
+  2105: 400, // Invalid contact number
+  5000: 500, // Database error
+};
+
+export const createSupportTicket = async (req, res) => {
+  try {
+    const { subject, area, severity, details, contact_name, contact_phone } =
+      req.body;
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? req.body.user_id;
+
+    // area defaults to "web_dashboard", severity to "low", contact to the user's own name / phone (in the SP)
+    const result = await createSupportTicketModel({
+      userId,
+      subject,
+      area,
+      severity,
+      details,
+      contactName: contact_name,
+      contactPhone: contact_phone,
+    });
+
+    // TODO: send FCM push to result.pushRecipients, then set notifications.is_pushed = 1
+
+    return res.status(SUPPORT_TICKET_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("createSupportTicket error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_get_my_tickets error code -> HTTP status
+const MY_TICKETS_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  2108: 400, // Invalid status filter (all / open / in_progress / resolved)
+  5000: 500, // Database error
+};
+
+export const getMyTickets = async (req, res) => {
+  try {
+    const input = { ...req.query, ...req.body };
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? input.user_id;
+
+    // same defaults as the SP: page >= 1, limit 1..100 (default 10); status defaults to "all" in the SP
+    const page = Math.max(parseInt(input.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(input.limit, 10) || 10, 1), 100);
+
+    const result = await getMyTicketsModel({
+      userId,
+      status: input.status,
+      page,
+      limit,
+    });
+
+    return res.status(MY_TICKETS_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      tabs: result.tabs,
+      data: result.data,
+      pagination: {
+        page,
+        limit,
+        total: result.total,
+        total_pages: Math.ceil(result.total / limit),
+      },
+    });
+  } catch (err) {
+    console.error("getMyTickets error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_admin_get_tickets error code -> HTTP status
+const ADMIN_TICKETS_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Only super admin can view all support tickets
+  2102: 400, // Invalid area
+  2103: 400, // Invalid severity
+  2108: 400, // Invalid status filter (pending / open / in_progress / resolved / all)
+  2111: 400, // From date is after To date
+  5000: 500, // Database error
+};
+
+export const adminGetTickets = async (req, res) => {
+  try {
+    const input = { ...req.query, ...req.body };
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? input.user_id;
+
+    // same defaults as the SP: page >= 1, limit 1..100 (default 20); status defaults to "pending" in the SP
+    const page = Math.max(parseInt(input.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(input.limit, 10) || 20, 1), 100);
+
+    const result = await adminGetTicketsModel({
+      userId,
+      status: input.status,
+      severity: input.severity,
+      area: input.area,
+      search: input.search,
+      fromDate: input.from_date, // "YYYY-MM-DD"
+      toDate: input.to_date, // "YYYY-MM-DD"
+      page,
+      limit,
+    });
+
+    return res.status(ADMIN_TICKETS_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      tabs: result.tabs,
+      data: result.data,
+      pagination: {
+        page,
+        limit,
+        total: result.total,
+        total_pages: Math.ceil(result.total / limit),
+      },
+    });
+  } catch (err) {
+    console.error("adminGetTickets error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_update_ticket_status error code -> HTTP status
+const UPDATE_TICKET_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Only super admin can update a support ticket
+  2106: 404, // Ticket not found
+  2107: 409, // Ticket is already resolved / in that status / changed by someone else
+  2109: 400, // Resolution note is required
+  2110: 400, // Invalid status (in_progress / resolved)
+  5000: 500, // Database error
+};
+
+export const updateTicketStatus = async (req, res) => {
+  try {
+    const { ticket_id, status, note } = req.body;
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? req.body.user_id;
+
+    const result = await updateTicketStatusModel({
+      userId,
+      ticketId: ticket_id,
+      status,
+      note,
+    });
+
+    // TODO: send FCM push to result.pushRecipients, then set notifications.is_pushed = 1
+
+    return res.status(UPDATE_TICKET_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("updateTicketStatus error:", err);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });

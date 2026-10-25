@@ -230,3 +230,131 @@ export const setPmVendors = async ({ userId, pmId, vendorIds }) => {
     data,
   };
 };
+
+// Calls sp_vendor_approve (closes the complaint, levies the SLA fine if late).
+// Result set 1: { error_code, error_message }
+// Result set 2 (only on success): { complaint_id, complaint_no, status, closed_at, closed_on_time, fine_amount }
+// Result set 3 (only on success): push recipients { notification_id, user_id, event_type, message, fcm_token }
+export const vendorApprove = async ({ userId, complaintId, remarks }) => {
+  const [results] = await pool.query("CALL sp_vendor_approve(?, ?, ?)", [
+    userId ?? null,
+    complaintId ?? null,
+    remarks ?? null,
+  ]);
+
+  const status = results[0][0];
+  const complaint = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+  const pushRecipients = Array.isArray(results[2]) ? results[2] : [];
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data: complaint,
+    pushRecipients,
+  };
+};
+
+// Calls sp_vendor_rework (sends PENDING_APPROVAL work back as REWORK_REQUIRED).
+// Result set 1: { error_code, error_message }
+// Result set 2 (only on success): { complaint_id, complaint_no, status, rework_count, worker_id, worker_name }
+// Result set 3 (only on success): push recipients { notification_id, user_id, event_type, message, fcm_token }
+export const vendorRework = async ({ userId, complaintId, reason, workerId }) => {
+  const [results] = await pool.query("CALL sp_vendor_rework(?, ?, ?, ?)", [
+    userId ?? null,
+    complaintId ?? null,
+    reason ?? null,
+    workerId ?? null,
+  ]);
+
+  const status = results[0][0];
+  const complaint = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+  const pushRecipients = Array.isArray(results[2]) ? results[2] : [];
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data: complaint,
+    pushRecipients,
+  };
+};
+
+// Calls sp_report_filter_options.
+// Result set 1: { error_code, error_message }
+// Result set 2 (only on success): report types { code, name, hint }
+// Result set 3 (only on success): vendors the user may filter by { vendor_id, company_name }
+export const getReportFilterOptions = async ({ userId }) => {
+  const [results] = await pool.query("CALL sp_report_filter_options(?)", [
+    userId ?? null,
+  ]);
+
+  const status = results[0][0];
+  const rows = (i) => (Array.isArray(results[i]) ? results[i] : []);
+
+  const data =
+    status.error_code === 0
+      ? { report_types: rows(1), vendors: rows(2) }
+      : null;
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data,
+  };
+};
+
+// Calls sp_penalty_report.
+// Result set 1: { error_code, error_message, total_count }
+// Result set 2 (only on success): summary of the whole filtered set (single row)
+// Result set 3 (only on success): vendor wise summary
+// Result set 4 (only on success): one page of rows (all rows, max 50000, when export = 1)
+export const getPenaltyReport = async ({
+  userId,
+  reportType,
+  fromDate,
+  toDate,
+  dateBy,
+  vendorId,
+  search,
+  page,
+  limit,
+  isExport,
+}) => {
+  const [results] = await pool.query(
+    "CALL sp_penalty_report(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [
+      userId ?? null,
+      reportType ?? null,
+      fromDate ?? null,
+      toDate ?? null,
+      dateBy ?? null,
+      vendorId ?? null,
+      search ?? null,
+      page,
+      limit,
+      isExport ? 1 : 0,
+    ]
+  );
+
+  const statusRow = results[0][0];
+  const rows = (i) => (Array.isArray(results[i]) ? results[i] : []);
+
+  // SUM() counts come back as DECIMAL strings, so convert them to numbers
+  const summaryRow = rows(1)[0] ?? null;
+  const summary = summaryRow
+    ? {
+        ...summaryRow,
+        levied_count: Number(summaryRow.levied_count),
+        accruing_count: Number(summaryRow.accruing_count),
+        waived_count: Number(summaryRow.waived_count),
+      }
+    : null;
+
+  return {
+    code: statusRow.error_code,
+    message: statusRow.error_message,
+    total: statusRow.total_count,
+    summary,
+    vendorSummary: rows(2),
+    data: rows(3),
+  };
+};
