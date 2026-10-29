@@ -4,6 +4,12 @@ import {
   createVendor as createVendorModel,
   createComplaint as createComplaintModel,
 } from "../models/userModel.js";
+import {
+  uploadMediaFiles,
+  uploadBase64Media,
+  cleanupUploads,
+  withFileUrls,
+} from "../config/s3.js";
 
 // SP error code -> HTTP status
 const STATUS_BY_CODE = {
@@ -152,6 +158,7 @@ const parseIsDraft = (value) =>
   value === 1 || value === true || value === "1" || value === "true";
 
 export const createComplaint = async (req, res) => {
+  const uploadedKeys = [];
   try {
     const {
       building_id,
@@ -167,12 +174,19 @@ export const createComplaint = async (req, res) => {
       location_accuracy,
       contact_name,
       contact_phone,
-      media,
       is_draft,
     } = req.body;
 
     // TODO: take this only from req.user once auth middleware is added
     const userId = req.user?.id ?? req.body.user_id;
+
+    // photos go to S3 either as form-data files or as base64 inside a JSON "media" array.
+    // complaint_id does not exist yet, so they all go under complaints/initial
+    const folder = "complaints/initial";
+    const uploaded = req.files?.length
+      ? await uploadMediaFiles(req.files, folder, uploadedKeys)
+      : null;
+    const media = uploaded ?? (await uploadBase64Media(req.body.media, folder, uploadedKeys));
 
     const result = await createComplaintModel({
       userId,
@@ -193,16 +207,22 @@ export const createComplaint = async (req, res) => {
       isDraft: parseIsDraft(is_draft),
     });
 
+    if (result.code !== 0) await cleanupUploads(uploadedKeys);
+
     // TODO: send FCM push to result.pushRecipients, then set notifications.is_pushed = 1
 
     return res.status(COMPLAINT_STATUS_BY_CODE[result.code] ?? 400).json({
       success: result.code === 0,
       code: result.code,
       message: result.message,
-      data: result.data,
+      data: result.data && {
+        ...result.data,
+        media: Array.isArray(media) ? await withFileUrls(media) : [],
+      },
     });
   } catch (err) {
     console.error("createComplaint error:", err);
+    await cleanupUploads(uploadedKeys);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });

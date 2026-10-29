@@ -15,7 +15,12 @@ import {
   updateTicketStatus as updateTicketStatusModel,
   getAllUsers as getAllUsersModel,
 } from "../models/complaintModel.js";
-import { uploadToS3, uploadDataUriToS3, deleteFromS3, withFileUrls } from "../config/s3.js";
+import {
+  uploadMediaFiles,
+  uploadBase64Media,
+  cleanupUploads,
+  withFileUrls,
+} from "../config/s3.js";
 
 // sp_get_building_complaint_types error code -> HTTP status
 const BUILDING_COMPLAINT_TYPES_STATUS_BY_CODE = {
@@ -305,56 +310,6 @@ const WORKER_START_STATUS_BY_CODE = {
   1616: 400, // media must be a JSON array
   5000: 500, // Database error
 };
-
-// Uploads the form-data "media" files to S3 and builds the media JSON the SP expects.
-// Keys are pushed into uploadedKeys as they finish, so the caller can clean them up on failure.
-const uploadMediaFiles = (files, folder, uploadedKeys) =>
-  Promise.all(
-    files.map(async (file) => {
-      const key = await uploadToS3(file, folder);
-      uploadedKeys.push(key);
-      return {
-        kind: file.mimetype.startsWith("video/") ? "video" : "photo",
-        file_url: key,
-        file_name: file.originalname,
-        mime_type: file.mimetype,
-        file_size_kb: Math.ceil(file.size / 1024),
-      };
-    })
-  );
-
-// Moves base64 photos from a JSON "media" array to S3 so the DB only stores S3 keys.
-// Anything that is not a JSON array is returned unchanged and the SP rejects it (1616).
-const uploadBase64Media = async (media, folder, uploadedKeys) => {
-  let items = media;
-  if (typeof media === "string") {
-    try {
-      items = JSON.parse(media);
-    } catch {
-      return media;
-    }
-  }
-  if (!Array.isArray(items)) return media;
-
-  return Promise.all(
-    items.map(async (item) => {
-      if (!/^data:/i.test(item?.file_url || "")) return item;
-      const uploaded = await uploadDataUriToS3(item.file_url, folder, item.file_name);
-      if (!uploaded) return item;
-      uploadedKeys.push(uploaded.key);
-      return {
-        ...item,
-        file_url: uploaded.key,
-        mime_type: item.mime_type ?? uploaded.mimetype,
-        file_size_kb: item.file_size_kb ?? uploaded.sizeKb,
-      };
-    })
-  );
-};
-
-// Deletes uploaded files when the SP rejects the request, so S3 has no orphans
-const cleanupUploads = (keys) =>
-  deleteFromS3(keys).catch((err) => console.error("S3 cleanup error:", err));
 
 export const workerStart = async (req, res) => {
   const uploadedKeys = [];

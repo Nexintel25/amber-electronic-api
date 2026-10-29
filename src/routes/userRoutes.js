@@ -1,4 +1,5 @@
 import express from "express";
+import { uploadMedia } from "../middlewares/upload.js";
 import {
   createUser,
   createVendor,
@@ -9,6 +10,6 @@ const router = express.Router();
 
 router.post("/createUser", createUser);
 router.post("/createVendor", createVendor);
-router.post("/createComplaint", createComplaint);
+router.post("/createComplaint", uploadMedia, createComplaint);
 
 export default router;
