@@ -15,7 +15,7 @@ import {
   updateTicketStatus as updateTicketStatusModel,
   getAllUsers as getAllUsersModel,
 } from "../models/complaintModel.js";
-import { uploadToS3, deleteFromS3, withFileUrls } from "../config/s3.js";
+import { uploadToS3, uploadDataUriToS3, deleteFromS3, withFileUrls } from "../config/s3.js";
 
 // sp_get_building_complaint_types error code -> HTTP status
 const BUILDING_COMPLAINT_TYPES_STATUS_BY_CODE = {
@@ -323,6 +323,35 @@ const uploadMediaFiles = (files, folder, uploadedKeys) =>
     })
   );
 
+// Moves base64 photos from a JSON "media" array to S3 so the DB only stores S3 keys.
+// Anything that is not a JSON array is returned unchanged and the SP rejects it (1616).
+const uploadBase64Media = async (media, folder, uploadedKeys) => {
+  let items = media;
+  if (typeof media === "string") {
+    try {
+      items = JSON.parse(media);
+    } catch {
+      return media;
+    }
+  }
+  if (!Array.isArray(items)) return media;
+
+  return Promise.all(
+    items.map(async (item) => {
+      if (!/^data:/i.test(item?.file_url || "")) return item;
+      const uploaded = await uploadDataUriToS3(item.file_url, folder, item.file_name);
+      if (!uploaded) return item;
+      uploadedKeys.push(uploaded.key);
+      return {
+        ...item,
+        file_url: uploaded.key,
+        mime_type: item.mime_type ?? uploaded.mimetype,
+        file_size_kb: item.file_size_kb ?? uploaded.sizeKb,
+      };
+    })
+  );
+};
+
 // Deletes uploaded files when the SP rejects the request, so S3 has no orphans
 const cleanupUploads = (keys) =>
   deleteFromS3(keys).catch((err) => console.error("S3 cleanup error:", err));
@@ -335,19 +364,17 @@ export const workerStart = async (req, res) => {
     // TODO: take this only from req.user once auth middleware is added
     const userId = req.user?.id ?? req.body.user_id;
 
-    // photos sent as form-data files go to S3; a JSON "media" array still works as before
+    // photos go to S3 either as form-data files or as base64 inside a JSON "media" array
+    const folder = `complaints/${parseInt(complaint_id, 10) || 0}/before`;
     const uploaded = req.files?.length
-      ? await uploadMediaFiles(
-          req.files,
-          `complaints/${parseInt(complaint_id, 10) || 0}/before`,
-          uploadedKeys
-        )
+      ? await uploadMediaFiles(req.files, folder, uploadedKeys)
       : null;
+    const media = uploaded ?? (await uploadBase64Media(req.body.media, folder, uploadedKeys));
 
     const result = await workerStartModel({
       userId,
       complaintId: complaint_id,
-      media: uploaded ?? req.body.media,
+      media,
     });
 
     if (result.code !== 0) await cleanupUploads(uploadedKeys);
@@ -358,7 +385,7 @@ export const workerStart = async (req, res) => {
       message: result.message,
       data: result.data && {
         ...result.data,
-        media: uploaded ? await withFileUrls(uploaded) : [],
+        media: Array.isArray(media) ? await withFileUrls(media) : [],
       },
     });
   } catch (err) {
@@ -394,20 +421,18 @@ export const workerSubmit = async (req, res) => {
     // TODO: take this only from req.user once auth middleware is added
     const userId = req.user?.id ?? req.body.user_id;
 
-    // photos sent as form-data files go to S3; a JSON "media" array still works as before
+    // photos go to S3 either as form-data files or as base64 inside a JSON "media" array
+    const folder = `complaints/${parseInt(complaint_id, 10) || 0}/after`;
     const uploaded = req.files?.length
-      ? await uploadMediaFiles(
-          req.files,
-          `complaints/${parseInt(complaint_id, 10) || 0}/after`,
-          uploadedKeys
-        )
+      ? await uploadMediaFiles(req.files, folder, uploadedKeys)
       : null;
+    const media = uploaded ?? (await uploadBase64Media(req.body.media, folder, uploadedKeys));
 
     const result = await workerSubmitModel({
       userId,
       complaintId: complaint_id,
       note,
-      media: uploaded ?? req.body.media,
+      media,
     });
 
     if (result.code !== 0) await cleanupUploads(uploadedKeys);
@@ -420,7 +445,7 @@ export const workerSubmit = async (req, res) => {
       message: result.message,
       data: result.data && {
         ...result.data,
-        media: uploaded ? await withFileUrls(uploaded) : [],
+        media: Array.isArray(media) ? await withFileUrls(media) : [],
       },
     });
   } catch (err) {

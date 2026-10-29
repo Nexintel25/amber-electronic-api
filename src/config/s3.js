@@ -43,6 +43,23 @@ export const uploadToS3 = async (file, folder) => {
   return key;
 };
 
+// Uploads a base64 data URI (data:image/jpeg;base64,...) and returns the S3 key + file info.
+// Returns null when the string is not a valid base64 data URI.
+export const uploadDataUriToS3 = async (dataUri, folder, fileName) => {
+  const match = /^data:([\w.+-]+\/[\w.+-]+);base64,(.+)$/s.exec(dataUri || "");
+  if (!match) return null;
+
+  const [, mimetype, base64] = match;
+  const buffer = Buffer.from(base64, "base64");
+  const ext = path.extname(fileName || "") || `.${mimetype.split("/")[1]}`;
+  const key = await uploadToS3(
+    { buffer, mimetype, originalname: `file${ext}` },
+    folder
+  );
+
+  return { key, mimetype, sizeKb: Math.ceil(buffer.length / 1024) };
+};
+
 // Removes files that were uploaded but then rejected by the SP
 export const deleteFromS3 = async (keys) => {
   if (!keys.length) return;
