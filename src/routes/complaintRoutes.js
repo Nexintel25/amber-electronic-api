@@ -1,4 +1,5 @@
 import express from "express";
+import { uploadMedia } from "../middlewares/upload.js";
 import {
   getBuildingComplaintTypes,
   getComplaintCategories,
@@ -26,8 +27,8 @@ router.post("/getComplaintDetail", getComplaintDetail);
 router.post("/getVendorWorkers", getVendorWorkers);
 router.post("/assignWorker", assignWorker);
 router.post("/workerCheckin", workerCheckin);
-router.post("/workerStart", workerStart);
-router.post("/workerSubmit", workerSubmit);
+router.post("/workerStart", uploadMedia, workerStart);
+router.post("/workerSubmit", uploadMedia, workerSubmit);
 router.post("/getVendorVerificationList", getVendorVerificationList);
 router.post("/createSupportTicket", createSupportTicket);
 router.post("/getMyTickets", getMyTickets);

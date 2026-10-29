@@ -1,4 +1,5 @@
 import pool from "../config/db.js";
+import { withFileUrls } from "../config/s3.js";
 
 // Calls sp_get_building_complaint_types.
 // Result set 1: { error_code, error_message }
@@ -88,7 +89,8 @@ export const getComplaintDetail = async ({ userId, complaintId }) => {
 
   const status = results[0][0];
   const complaint = Array.isArray(results[1]) ? results[1][0] ?? null : null;
-  const media = Array.isArray(results[2]) ? results[2] : [];
+  // file_url holds the S3 key; swap it for a signed URL the frontend can show
+  const media = await withFileUrls(Array.isArray(results[2]) ? results[2] : []);
   const history = Array.isArray(results[3]) ? results[3] : [];
 
   return {
@@ -266,7 +268,8 @@ export const getVendorVerificationList = async ({
       }
     : null;
   const complaints = Array.isArray(results[2]) ? results[2] : [];
-  const media = Array.isArray(results[3]) ? results[3] : [];
+  // file_url holds the S3 key; swap it for a signed URL the frontend can show
+  const media = await withFileUrls(Array.isArray(results[3]) ? results[3] : []);
 
   // attach each complaint's photos to it
   const data = complaints.map((c) => ({

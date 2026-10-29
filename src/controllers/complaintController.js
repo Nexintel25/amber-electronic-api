@@ -15,6 +15,7 @@ import {
   updateTicketStatus as updateTicketStatusModel,
   getAllUsers as getAllUsersModel,
 } from "../models/complaintModel.js";
+import { uploadToS3, deleteFromS3, withFileUrls } from "../config/s3.js";
 
 // sp_get_building_complaint_types error code -> HTTP status
 const BUILDING_COMPLAINT_TYPES_STATUS_BY_CODE = {
@@ -305,27 +306,64 @@ const WORKER_START_STATUS_BY_CODE = {
   5000: 500, // Database error
 };
 
+// Uploads the form-data "media" files to S3 and builds the media JSON the SP expects.
+// Keys are pushed into uploadedKeys as they finish, so the caller can clean them up on failure.
+const uploadMediaFiles = (files, folder, uploadedKeys) =>
+  Promise.all(
+    files.map(async (file) => {
+      const key = await uploadToS3(file, folder);
+      uploadedKeys.push(key);
+      return {
+        kind: file.mimetype.startsWith("video/") ? "video" : "photo",
+        file_url: key,
+        file_name: file.originalname,
+        mime_type: file.mimetype,
+        file_size_kb: Math.ceil(file.size / 1024),
+      };
+    })
+  );
+
+// Deletes uploaded files when the SP rejects the request, so S3 has no orphans
+const cleanupUploads = (keys) =>
+  deleteFromS3(keys).catch((err) => console.error("S3 cleanup error:", err));
+
 export const workerStart = async (req, res) => {
+  const uploadedKeys = [];
   try {
-    const { complaint_id, media } = req.body;
+    const { complaint_id } = req.body;
 
     // TODO: take this only from req.user once auth middleware is added
     const userId = req.user?.id ?? req.body.user_id;
 
+    // photos sent as form-data files go to S3; a JSON "media" array still works as before
+    const uploaded = req.files?.length
+      ? await uploadMediaFiles(
+          req.files,
+          `complaints/${parseInt(complaint_id, 10) || 0}/before`,
+          uploadedKeys
+        )
+      : null;
+
     const result = await workerStartModel({
       userId,
       complaintId: complaint_id,
-      media,
+      media: uploaded ?? req.body.media,
     });
+
+    if (result.code !== 0) await cleanupUploads(uploadedKeys);
 
     return res.status(WORKER_START_STATUS_BY_CODE[result.code] ?? 400).json({
       success: result.code === 0,
       code: result.code,
       message: result.message,
-      data: result.data,
+      data: result.data && {
+        ...result.data,
+        media: uploaded ? await withFileUrls(uploaded) : [],
+      },
     });
   } catch (err) {
     console.error("workerStart error:", err);
+    await cleanupUploads(uploadedKeys);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
@@ -349,18 +387,30 @@ const WORKER_SUBMIT_STATUS_BY_CODE = {
 };
 
 export const workerSubmit = async (req, res) => {
+  const uploadedKeys = [];
   try {
-    const { complaint_id, note, media } = req.body;
+    const { complaint_id, note } = req.body;
 
     // TODO: take this only from req.user once auth middleware is added
     const userId = req.user?.id ?? req.body.user_id;
+
+    // photos sent as form-data files go to S3; a JSON "media" array still works as before
+    const uploaded = req.files?.length
+      ? await uploadMediaFiles(
+          req.files,
+          `complaints/${parseInt(complaint_id, 10) || 0}/after`,
+          uploadedKeys
+        )
+      : null;
 
     const result = await workerSubmitModel({
       userId,
       complaintId: complaint_id,
       note,
-      media,
+      media: uploaded ?? req.body.media,
     });
+
+    if (result.code !== 0) await cleanupUploads(uploadedKeys);
 
     // TODO: send FCM push to result.pushRecipients, then set notifications.is_pushed = 1
 
@@ -368,10 +418,14 @@ export const workerSubmit = async (req, res) => {
       success: result.code === 0,
       code: result.code,
       message: result.message,
-      data: result.data,
+      data: result.data && {
+        ...result.data,
+        media: uploaded ? await withFileUrls(uploaded) : [],
+      },
     });
   } catch (err) {
     console.error("workerSubmit error:", err);
+    await cleanupUploads(uploadedKeys);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
