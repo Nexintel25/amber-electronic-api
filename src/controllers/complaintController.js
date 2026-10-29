@@ -13,6 +13,7 @@ import {
   getMyTickets as getMyTicketsModel,
   adminGetTickets as adminGetTicketsModel,
   updateTicketStatus as updateTicketStatusModel,
+  getAllUsers as getAllUsersModel,
 } from "../models/complaintModel.js";
 
 // sp_get_building_complaint_types error code -> HTTP status
@@ -618,6 +619,62 @@ export const updateTicketStatus = async (req, res) => {
     });
   } catch (err) {
     console.error("updateTicketStatus error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_get_all_users error code -> HTTP status
+const ALL_USERS_STATUS_BY_CODE = {
+  0: 200,
+  1503: 404, // Building not found or inactive
+  1601: 404, // User not found or inactive
+  1603: 403, // Only super admin can view all users
+  1604: 404, // Vendor not found
+  2201: 400, // Invalid role filter
+  2202: 400, // Invalid status filter (all / active / inactive)
+  5000: 500, // Database error
+};
+
+export const getAllUsers = async (req, res) => {
+  try {
+    const input = { ...req.query, ...req.body };
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? input.user_id;
+
+    // page >= 1, limit 1..100 (default 20)
+    const page = Math.max(parseInt(input.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(input.limit, 10) || 20, 1), 100);
+
+    const result = await getAllUsersModel({
+      userId,
+      role: input.role,
+      status: input.status,
+      vendorId: input.vendor_id,
+      buildingId: input.building_id,
+      search: input.search,
+      page,
+      limit,
+    });
+
+    return res.status(ALL_USERS_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      tabs: result.tabs,
+      data: result.data,
+      filters: result.filters,
+      pagination: {
+        page,
+        limit,
+        total: result.total,
+        total_pages: Math.ceil(result.total / limit),
+      },
+    });
+  } catch (err) {
+    console.error("getAllUsers error:", err);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });

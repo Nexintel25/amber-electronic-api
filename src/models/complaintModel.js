@@ -422,3 +422,54 @@ export const updateTicketStatus = async ({ userId, ticketId, status, note }) => 
     pushRecipients,
   };
 };
+
+// Calls sp_get_all_users.
+// Result set 1: { error_code, error_message, total_count }
+// Result set 2 (only on success): tab counts per role + active/inactive
+// Result set 3 (only on success): one page of users
+// Result set 4 (only on success): vendor filter options { vendor_id, company_name }
+// Result set 5 (only on success): building filter options { building_id, building_name }
+export const getAllUsers = async ({
+  userId,
+  role,
+  status,
+  vendorId,
+  buildingId,
+  search,
+  page,
+  limit,
+}) => {
+  const [results] = await pool.query(
+    "CALL sp_get_all_users(?, ?, ?, ?, ?, ?, ?, ?)",
+    [
+      userId ?? null,
+      role ?? null,
+      status ?? null,
+      vendorId ?? null,
+      buildingId ?? null,
+      search ?? null,
+      page,
+      limit,
+    ]
+  );
+
+  const statusRow = results[0][0];
+
+  // SUM() comes back as a DECIMAL string, so convert the tab counts to numbers
+  const tabRow = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+  const tabs = tabRow
+    ? Object.fromEntries(Object.entries(tabRow).map(([k, v]) => [k, Number(v)]))
+    : null;
+
+  return {
+    code: statusRow.error_code,
+    message: statusRow.error_message,
+    total: Number(statusRow.total_count ?? 0),
+    tabs,
+    data: Array.isArray(results[2]) ? results[2] : [],
+    filters: {
+      vendors: Array.isArray(results[3]) ? results[3] : [],
+      buildings: Array.isArray(results[4]) ? results[4] : [],
+    },
+  };
+};
