@@ -100,6 +100,7 @@ export const getComplaintDetail = async ({ userId, complaintId }) => {
   };
 };
 
+
 // Calls sp_get_vendor_workers.
 // Result set 1: { error_code, error_message }
 // Result set 2 (only on success): active worker rows of the vendor with open_jobs count
