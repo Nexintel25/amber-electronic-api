@@ -10,6 +10,7 @@ import userRoutes from "./routes/userRoutes.js";
 import complaintTypeRoutes from "./routes/complaintTypeRoutes.js";
 import complaintRoutes from "./routes/complaintRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import productRoutes from "./routes/productRoutes.js";
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use("/api/buildings", buildingRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/complaint-types", complaintTypeRoutes);
 app.use("/api/complaints", complaintRoutes);
+app.use("/api/products", productRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Amber Electronic API is running" });

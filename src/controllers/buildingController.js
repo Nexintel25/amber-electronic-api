@@ -7,7 +7,6 @@ import {
   getPmVendors as getPmVendorsModel,
   getPmWorkerDetail as getPmWorkerDetailModel,
   setPmVendors as setPmVendorsModel,
-  getCreatorDashboard as getCreatorDashboardModel,
   vendorApprove as vendorApproveModel,
   vendorRework as vendorReworkModel,
   getReportFilterOptions as getReportFilterOptionsModel,
@@ -209,50 +208,6 @@ export const getPmVendors = async (req, res) => {
     });
   } catch (err) {
     console.error("getPmVendors error:", err);
-    return res
-      .status(500)
-      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
-  }
-};
-
-// sp_creator_dashboard error code -> HTTP status
-const CREATOR_DASHBOARD_STATUS_BY_CODE = {
-  0: 200,
-  1601: 404, // User not found or inactive
-  1603: 403, // Your role is not allowed to do this (clients only)
-  5000: 500, // Database error
-};
-
-export const getCreatorDashboard = async (req, res) => {
-  try {
-    const input = { ...req.query, ...req.body };
-
-    // TODO: take this only from req.user once auth middleware is added
-    const userId = req.user?.id ?? input.user_id;
-
-    // only_mine: 0 / "0" / false / "false" -> whole building, anything else (or missing) -> only mine
-    const onlyMine = !(
-      input.only_mine === 0 ||
-      input.only_mine === false ||
-      input.only_mine === "0" ||
-      input.only_mine === "false"
-    );
-
-    const result = await getCreatorDashboardModel({
-      userId,
-      onlyMine,
-      // SP clamps this to 1..20 (default 5)
-      activeLimit: parseInt(input.active_limit, 10) || null,
-    });
-
-    return res.status(CREATOR_DASHBOARD_STATUS_BY_CODE[result.code] ?? 400).json({
-      success: result.code === 0,
-      code: result.code,
-      message: result.message,
-      data: result.data,
-    });
-  } catch (err) {
-    console.error("getCreatorDashboard error:", err);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });

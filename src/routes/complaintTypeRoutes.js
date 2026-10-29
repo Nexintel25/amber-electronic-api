@@ -10,6 +10,8 @@ import {
   getComplaintRegisterReport,
   getSatisfactionReport,
   waiveFine,
+  getCreatorDashboard,
+  getWorkerDashboard,
 } from "../controllers/complaintTypeController.js";
 
 const router = express.Router();
@@ -24,5 +26,7 @@ router.post("/setComplianceRule", setComplianceRule);
 router.post("/getComplaintRegisterReport", getComplaintRegisterReport);
 router.post("/getSatisfactionReport", getSatisfactionReport);
 router.post("/waiveFine", waiveFine);
+router.post("/getCreatorDashboard", getCreatorDashboard);
+router.post("/getWorkerDashboard", getWorkerDashboard);
 
 export default router;

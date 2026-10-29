@@ -1,4 +1,5 @@
 import pool from "../config/db.js";
+import { mapResultSets } from "../utils/dbResults.js";
 
 // Calls sp_get_complaint_types.
 // Result set 1: { error_code, error_message }
@@ -251,5 +252,69 @@ export const waiveFine = async ({ userId, complaintId, remarks }) => {
     message: status.error_message,
     data,
     pushRecipients,
+  };
+};
+
+// Known result sets of sp_creator_dashboard, in order, after the status row.
+// single: true -> the section is one row, returned as an object instead of an array.
+const CREATOR_DASHBOARD_SECTIONS = [
+  { key: "kpis", single: true },
+  { key: "sla", single: true },
+  { key: "active_complaints" },
+  { key: "feedback_pending" },
+];
+
+// Calls sp_creator_dashboard (clients only).
+// Result set 1: { error_code, error_message }
+// Result sets 2+ (only on success) are mapped by position to CREATOR_DASHBOARD_SECTIONS.
+// A result set the SP adds later is still returned as section_<n> (n = its position),
+// so a new section shows up in the API before this list is updated.
+export const getCreatorDashboard = async ({ userId, onlyMine, activeLimit }) => {
+  const [results, fields] = await pool.query(
+    "CALL sp_creator_dashboard(?, ?, ?)",
+    [userId ?? null, onlyMine ? 1 : 0, activeLimit ?? null]
+  );
+
+  const status = results[0][0];
+
+  if (status.error_code !== 0) {
+    return { code: status.error_code, message: status.error_message, data: null };
+  }
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data: mapResultSets(results, fields, CREATOR_DASHBOARD_SECTIONS),
+  };
+};
+
+// Known result sets of sp_worker_dashboard, in order, after the status row.
+// single: true -> the section is one row, returned as an object instead of an array.
+const WORKER_DASHBOARD_SECTIONS = [
+  { key: "kpis", single: true },
+  { key: "jobs" }, // open jobs, rework first, then red / yellow, with next_step
+  { key: "history" }, // last 10 closed jobs
+];
+
+// Calls sp_worker_dashboard (workers only).
+// Result set 1: { error_code, error_message }
+// Result sets 2+ (only on success) are mapped by position to WORKER_DASHBOARD_SECTIONS;
+// a result set the SP adds later is still returned as section_<n>.
+export const getWorkerDashboard = async ({ userId, jobsLimit }) => {
+  const [results, fields] = await pool.query(
+    "CALL sp_worker_dashboard(?, ?)",
+    [userId ?? null, jobsLimit ?? null]
+  );
+
+  const status = results[0][0];
+
+  if (status.error_code !== 0) {
+    return { code: status.error_code, message: status.error_message, data: null };
+  }
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data: mapResultSets(results, fields, WORKER_DASHBOARD_SECTIONS),
   };
 };

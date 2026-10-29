@@ -9,6 +9,8 @@ import {
   getComplaintRegisterReport as getComplaintRegisterReportModel,
   getSatisfactionReport as getSatisfactionReportModel,
   waiveFine as waiveFineModel,
+  getCreatorDashboard as getCreatorDashboardModel,
+  getWorkerDashboard as getWorkerDashboardModel,
 } from "../models/complaintTypeModel.js";
 
 // SP error code -> HTTP status
@@ -403,6 +405,85 @@ export const waiveFine = async (req, res) => {
     });
   } catch (err) {
     console.error("waiveFine error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_creator_dashboard error code -> HTTP status
+const CREATOR_DASHBOARD_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Your role is not allowed to do this (clients only)
+  5000: 500, // Database error
+};
+
+export const getCreatorDashboard = async (req, res) => {
+  try {
+    const input = { ...req.query, ...req.body };
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? input.user_id;
+
+    // only_mine: 0 / "0" / false / "false" -> whole building, anything else (or missing) -> only mine
+    const onlyMine = !(
+      input.only_mine === 0 ||
+      input.only_mine === false ||
+      input.only_mine === "0" ||
+      input.only_mine === "false"
+    );
+
+    const result = await getCreatorDashboardModel({
+      userId,
+      onlyMine,
+      // SP clamps this to 1..20 (default 5)
+      activeLimit: parseInt(input.active_limit, 10) || null,
+    });
+
+    return res.status(CREATOR_DASHBOARD_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("getCreatorDashboard error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_worker_dashboard error code -> HTTP status
+const WORKER_DASHBOARD_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Your role is not allowed to do this (workers only)
+  5000: 500, // Database error
+};
+
+export const getWorkerDashboard = async (req, res) => {
+  try {
+    const input = { ...req.query, ...req.body };
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? input.user_id;
+
+    const result = await getWorkerDashboardModel({
+      userId,
+      // SP clamps this to 1..50 (default 10)
+      jobsLimit: parseInt(input.jobs_limit, 10) || null,
+    });
+
+    return res.status(WORKER_DASHBOARD_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("getWorkerDashboard error:", err);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });

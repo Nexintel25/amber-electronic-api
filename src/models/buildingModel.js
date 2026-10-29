@@ -157,36 +157,6 @@ export const getPmVendors = async ({ userId, onlyActive }) => {
   };
 };
 
-// Calls sp_creator_dashboard (clients only).
-// Result set 1: { error_code, error_message }
-// Result sets 2-4 (only on success), in order:
-//   2 kpis (single row), 3 SLA compliance card (single row), 4 active complaints
-export const getCreatorDashboard = async ({ userId, onlyMine, activeLimit }) => {
-  const [results] = await pool.query("CALL sp_creator_dashboard(?, ?, ?)", [
-    userId ?? null,
-    onlyMine ? 1 : 0,
-    activeLimit ?? null,
-  ]);
-
-  const status = results[0][0];
-  const rows = (i) => (Array.isArray(results[i]) ? results[i] : []);
-
-  const data =
-    status.error_code === 0
-      ? {
-          kpis: rows(1)[0] ?? null,
-          sla: rows(2)[0] ?? null,
-          active_complaints: rows(3),
-        }
-      : null;
-
-  return {
-    code: status.error_code,
-    message: status.error_message,
-    data,
-  };
-};
-
 // Calls sp_pm_worker_detail (project managers only).
 // Result set 1: { error_code, error_message }
 // Result set 2 (only on success): worker detail row

@@ -7,12 +7,13 @@ import {
   getPmVendors,
   getPmWorkerDetail,
   setPmVendors,
-  getCreatorDashboard,
   vendorApprove,
   vendorRework,
   getReportFilterOptions,
   getPenaltyReport,
 } from "../controllers/buildingController.js";
+// moved to complaintTypeController; this old URL is kept so existing callers keep working
+import { getCreatorDashboard } from "../controllers/complaintTypeController.js";
 
 const router = express.Router();
 
