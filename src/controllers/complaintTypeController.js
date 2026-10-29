@@ -3,6 +3,7 @@ import {
   getBuildings as getBuildingsModel,
   getVendors as getVendorsModel,
   getUserTypes as getUserTypesModel,
+  getBenchmarkReport as getBenchmarkReportModel,
 } from "../models/complaintTypeModel.js";
 
 // SP error code -> HTTP status
@@ -117,6 +118,47 @@ export const getUserTypes = async (req, res) => {
     });
   } catch (err) {
     console.error("getUserTypes error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_report_benchmark error code -> HTTP status (codes come from sp_cmp_prepare)
+const BENCHMARK_REPORT_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Your role is not allowed to do this
+  2301: 400, // Invalid month, use YYYY-MM
+  2302: 403, // Vendor is not allowed for you
+  5000: 500, // Database error
+};
+
+export const getBenchmarkReport = async (req, res) => {
+  try {
+    const input = { ...req.query, ...req.body };
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? input.user_id;
+
+    const result = await getBenchmarkReportModel({
+      userId,
+      month: input.month, // "YYYY-MM", missing -> current month
+      // "" / "null" from the UI means all vendors; the SP param is INT so send NULL
+      vendorId: parseInt(input.vendor_id, 10) || null,
+    });
+
+    return res.status(BENCHMARK_REPORT_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      month: result.month,
+      summary: result.summary,
+      by_category: result.byCategory,
+      by_vendor: result.byVendor,
+    });
+  } catch (err) {
+    console.error("getBenchmarkReport error:", err);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });

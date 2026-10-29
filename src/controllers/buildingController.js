@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import {
   createBuildingWithUser,
-  checkMedia as checkMediaModel,
+  // checkMedia as checkMediaModel,
   getAdminDashboard as getAdminDashboardModel,
   getPmDashboard as getPmDashboardModel,
   getPmVendors as getPmVendorsModel,
@@ -93,27 +93,27 @@ const CHECK_MEDIA_STATUS_BY_CODE = {
   1616: 400, // media must be a JSON array
 };
 
-export const checkMedia = async (req, res) => {
-  try {
-    const { media, min_photos } = req.body;
+// export const checkMedia = async (req, res) => {
+//   try {
+//     const { media, min_photos } = req.body;
 
-    const result = await checkMediaModel({
-      media,
-      minPhotos: Number(min_photos) || 0,
-    });
+//     const result = await checkMediaModel({
+//       media,
+//       minPhotos: Number(min_photos) || 0,
+//     });
 
-    return res.status(CHECK_MEDIA_STATUS_BY_CODE[result.code] ?? 400).json({
-      success: result.code === 0,
-      code: result.code,
-      message: result.message,
-    });
-  } catch (err) {
-    console.error("checkMedia error:", err);
-    return res
-      .status(500)
-      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
-  }
-};
+//     return res.status(CHECK_MEDIA_STATUS_BY_CODE[result.code] ?? 400).json({
+//       success: result.code === 0,
+//       code: result.code,
+//       message: result.message,
+//     });
+//   } catch (err) {
+//     console.error("checkMedia error:", err);
+//     return res
+//       .status(500)
+//       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+//   }
+// };
 
 // sp_admin_dashboard error code -> HTTP status
 const ADMIN_DASHBOARD_STATUS_BY_CODE = {

@@ -46,30 +46,30 @@ export const createBuildingWithUser = async ({
 // Calls sp_internal_check_media.
 // No result sets: the result comes back through OUT params o_code / o_msg,
 // so the CALL and the SELECT of the session variables must use the same connection.
-export const checkMedia = async ({ media, minPhotos }) => {
-  const conn = await pool.getConnection();
-  try {
-    await conn.query("CALL sp_internal_check_media(?, ?, @o_code, @o_msg)", [
-      // SP expects a JSON array like [{ kind, file_url }]; non-arrays are rejected by SP (1616)
-      // form-data sends it as a string already, so pass strings through as-is
-      media == null
-        ? null
-        : typeof media === "string"
-          ? media
-          : JSON.stringify(media),
-      minPhotos ?? 0,
-    ]);
+// export const checkMedia = async ({ media, minPhotos }) => {
+//   const conn = await pool.getConnection();
+//   try {
+//     await conn.query("CALL sp_internal_check_media(?, ?, @o_code, @o_msg)", [
+//       // SP expects a JSON array like [{ kind, file_url }]; non-arrays are rejected by SP (1616)
+//       // form-data sends it as a string already, so pass strings through as-is
+//       media == null
+//         ? null
+//         : typeof media === "string"
+//           ? media
+//           : JSON.stringify(media),
+//       minPhotos ?? 0,
+//     ]);
 
-    const [[status]] = await conn.query("SELECT @o_code AS code, @o_msg AS message");
+//     const [[status]] = await conn.query("SELECT @o_code AS code, @o_msg AS message");
 
-    return {
-      code: status.code,
-      message: status.message,
-    };
-  } finally {
-    conn.release();
-  }
-};
+//     return {
+//       code: status.code,
+//       message: status.message,
+//     };
+//   } finally {
+//     conn.release();
+//   }
+// };
 
 // Calls sp_admin_dashboard.
 // Result set 1: { error_code, error_message }

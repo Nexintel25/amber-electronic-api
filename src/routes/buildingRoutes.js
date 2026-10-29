@@ -1,7 +1,7 @@
 import express from "express";
 import {
   createBuilding,
-  checkMedia,
+  // checkMedia,
   getAdminDashboard,
   getPmDashboard,
   getPmVendors,
@@ -17,7 +17,7 @@ import {
 const router = express.Router();
 
 router.post("/createBuildingWithUser", createBuilding);
-router.post("/checkMedia", checkMedia);
+// router.post("/checkMedia", checkMedia);
 router.post("/getAdminDashboard", getAdminDashboard);
 router.post("/getPmDashboard", getPmDashboard);
 router.post("/getPmVendors", getPmVendors);
