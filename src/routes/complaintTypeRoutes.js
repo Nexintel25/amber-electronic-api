@@ -5,6 +5,10 @@ import {
   getVendors,
   getUserTypes,
   getBenchmarkReport,
+  recordComplaintFeedback,
+  setComplianceRule,
+  getComplaintRegisterReport,
+  getSatisfactionReport,
 } from "../controllers/complaintTypeController.js";
 
 const router = express.Router();
@@ -14,5 +18,9 @@ router.post("/getBuildings", getBuildings);
 router.post("/getVendors", getVendors);
 router.post("/getUserTypes", getUserTypes);
 router.post("/getBenchmarkReport", getBenchmarkReport);
+router.post("/recordComplaintFeedback", recordComplaintFeedback);
+router.post("/setComplianceRule", setComplianceRule);
+router.post("/getComplaintRegisterReport", getComplaintRegisterReport);
+router.post("/getSatisfactionReport", getSatisfactionReport);
 
 export default router;

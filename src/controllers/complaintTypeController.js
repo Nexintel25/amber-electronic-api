@@ -4,6 +4,10 @@ import {
   getVendors as getVendorsModel,
   getUserTypes as getUserTypesModel,
   getBenchmarkReport as getBenchmarkReportModel,
+  recordComplaintFeedback as recordComplaintFeedbackModel,
+  setComplianceRule as setComplianceRuleModel,
+  getComplaintRegisterReport as getComplaintRegisterReportModel,
+  getSatisfactionReport as getSatisfactionReportModel,
 } from "../models/complaintTypeModel.js";
 
 // SP error code -> HTTP status
@@ -159,6 +163,205 @@ export const getBenchmarkReport = async (req, res) => {
     });
   } catch (err) {
     console.error("getBenchmarkReport error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_record_complaint_feedback error code -> HTTP status
+const COMPLAINT_FEEDBACK_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Your role is not allowed to do this (client / admin / super_admin only)
+  2401: 404, // Complaint not found
+  2402: 409, // Feedback can be taken only on a CLOSED complaint
+  2403: 400, // satisfied must be 0 or 1
+  2407: 403, // You can give feedback only on complaints of your own building
+  5000: 500, // Database error
+};
+
+// satisfied: 1 / "1" / true / "true" -> 1, 0 / "0" / false / "false" -> 0,
+// anything else -> null so the SP rejects it (2403)
+const parseSatisfied = (value) => {
+  if (value === 1 || value === true || value === "1" || value === "true") return 1;
+  if (value === 0 || value === false || value === "0" || value === "false") return 0;
+  return null;
+};
+
+export const recordComplaintFeedback = async (req, res) => {
+  try {
+    const { complaint_id, satisfied, remarks } = req.body;
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? req.body.user_id;
+
+    const result = await recordComplaintFeedbackModel({
+      userId,
+      complaintId: complaint_id,
+      satisfied: parseSatisfied(satisfied),
+      remarks,
+    });
+
+    return res.status(COMPLAINT_FEEDBACK_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("recordComplaintFeedback error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_set_compliance_rule error code -> HTTP status
+const COMPLIANCE_RULE_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Your role is not allowed to do this (super_admin only)
+  2404: 400, // Invalid rule_type (timeliness / satisfaction)
+  2405: 400, // Invalid percentage / amount (tier 2 % must not be above tier 1 %)
+  2406: 404, // Category not found
+  5000: 500, // Database error
+};
+
+// "" / "abc" / missing -> null so the SP rejects it (2405) instead of a MySQL type error
+const parseNumber = (value) => {
+  const num = parseFloat(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+export const setComplianceRule = async (req, res) => {
+  try {
+    const {
+      category_id,
+      rule_type,
+      tier1_pct,
+      tier1_amount,
+      tier2_pct,
+      tier2_amount,
+    } = req.body;
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? req.body.user_id;
+
+    const result = await setComplianceRuleModel({
+      userId,
+      categoryId: parseInt(category_id, 10) || null,
+      ruleType: rule_type,
+      tier1Pct: parseNumber(tier1_pct),
+      tier1Amount: parseNumber(tier1_amount),
+      tier2Pct: parseNumber(tier2_pct),
+      tier2Amount: parseNumber(tier2_amount),
+    });
+
+    return res.status(COMPLIANCE_RULE_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+    });
+  } catch (err) {
+    console.error("setComplianceRule error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_report_complaint_register error code -> HTTP status (codes come from sp_cmp_prepare)
+const COMPLAINT_REGISTER_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Your role is not allowed to do this
+  2301: 400, // Invalid month, use YYYY-MM
+  2302: 403, // Vendor is not allowed for you
+  5000: 500, // Database error
+};
+
+export const getComplaintRegisterReport = async (req, res) => {
+  try {
+    const input = { ...req.query, ...req.body };
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? input.user_id;
+
+    // same defaults as the SP: page >= 1, limit 1..100 (default 20)
+    const page = Math.max(parseInt(input.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(input.limit, 10) || 20, 1), 100);
+
+    // export: 1 / "1" / true / "true" -> all rows (max 50000), no paging
+    const isExport =
+      input.export === 1 ||
+      input.export === true ||
+      input.export === "1" ||
+      input.export === "true";
+
+    const result = await getComplaintRegisterReportModel({
+      userId,
+      month: input.month, // "YYYY-MM", missing -> current month
+      // "" / "null" from the UI means all; the SP params are INT so send NULL
+      vendorId: parseInt(input.vendor_id, 10) || null,
+      categoryId: parseInt(input.category_id, 10) || null,
+      status: input.status, // e.g. CLOSED, missing / "ALL" -> all statuses
+      search: input.search,
+      page,
+      limit,
+      isExport,
+    });
+
+    return res.status(COMPLAINT_REGISTER_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      month: result.month,
+      summary: result.summary,
+      data: result.data,
+      pagination: isExport
+        ? null
+        : {
+            page,
+            limit,
+            total: result.total,
+            total_pages: Math.ceil(result.total / limit),
+          },
+    });
+  } catch (err) {
+    console.error("getComplaintRegisterReport error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_report_satisfaction uses the same codes as sp_report_benchmark (from sp_cmp_prepare)
+export const getSatisfactionReport = async (req, res) => {
+  try {
+    const input = { ...req.query, ...req.body };
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? input.user_id;
+
+    const result = await getSatisfactionReportModel({
+      userId,
+      month: input.month, // "YYYY-MM", missing -> current month
+      // "" / "null" from the UI means all vendors; the SP param is INT so send NULL
+      vendorId: parseInt(input.vendor_id, 10) || null,
+    });
+
+    return res.status(BENCHMARK_REPORT_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      month: result.month,
+      summary: result.summary,
+      by_vendor: result.byVendor,
+      feedbacks: result.feedbacks,
+    });
+  } catch (err) {
+    console.error("getSatisfactionReport error:", err);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
