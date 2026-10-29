@@ -230,3 +230,26 @@ export const getSatisfactionReport = async ({ userId, month, vendorId }) => {
     feedbacks,
   };
 };
+
+// Calls sp_waive_fine.
+// Result set 1: { error_code, error_message }
+// Result set 2 (only on success): { complaint_id, complaint_no, fine_amount, status, waived_at }
+// Result set 3 (only on success): push recipients { notification_id, user_id, event_type, message, fcm_token }
+export const waiveFine = async ({ userId, complaintId, remarks }) => {
+  const [results] = await pool.query("CALL sp_waive_fine(?, ?, ?)", [
+    userId ?? null,
+    complaintId ?? null,
+    remarks ?? null,
+  ]);
+
+  const status = results[0][0];
+  const data = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+  const pushRecipients = Array.isArray(results[2]) ? results[2] : [];
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data,
+    pushRecipients,
+  };
+};

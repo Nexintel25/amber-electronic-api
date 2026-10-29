@@ -8,6 +8,7 @@ import {
   setComplianceRule as setComplianceRuleModel,
   getComplaintRegisterReport as getComplaintRegisterReportModel,
   getSatisfactionReport as getSatisfactionReportModel,
+  waiveFine as waiveFineModel,
 } from "../models/complaintTypeModel.js";
 
 // SP error code -> HTTP status
@@ -362,6 +363,46 @@ export const getSatisfactionReport = async (req, res) => {
     });
   } catch (err) {
     console.error("getSatisfactionReport error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_waive_fine error code -> HTTP status
+const WAIVE_FINE_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Your role is not allowed to do this (admin / super_admin only)
+  2501: 404, // No fine found for this complaint
+  2502: 409, // Fine is already waived
+  2503: 400, // Remarks are required
+  5000: 500, // Database error
+};
+
+export const waiveFine = async (req, res) => {
+  try {
+    const { complaint_id, remarks } = req.body;
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? req.body.user_id;
+
+    const result = await waiveFineModel({
+      userId,
+      complaintId: complaint_id,
+      remarks,
+    });
+
+    // TODO: send FCM push to result.pushRecipients, then set notifications.is_pushed = 1
+
+    return res.status(WAIVE_FINE_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("waiveFine error:", err);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });

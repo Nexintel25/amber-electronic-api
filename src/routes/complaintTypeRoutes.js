@@ -9,6 +9,7 @@ import {
   setComplianceRule,
   getComplaintRegisterReport,
   getSatisfactionReport,
+  waiveFine,
 } from "../controllers/complaintTypeController.js";
 
 const router = express.Router();
@@ -22,5 +23,6 @@ router.post("/recordComplaintFeedback", recordComplaintFeedback);
 router.post("/setComplianceRule", setComplianceRule);
 router.post("/getComplaintRegisterReport", getComplaintRegisterReport);
 router.post("/getSatisfactionReport", getSatisfactionReport);
+router.post("/waiveFine", waiveFine);
 
 export default router;
