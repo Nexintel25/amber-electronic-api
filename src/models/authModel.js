@@ -66,3 +66,51 @@ export const loginSuccess = async ({
     data,
   };
 };
+
+// Calls sp_change_my_password (updates the hash and revokes every other session).
+// Result set 1: { error_code, error_message }
+// Result set 2 (if the SP returns one): extra details, e.g. revoked session count
+export const changeMyPassword = async ({
+  userId,
+  newPasswordHash,
+  keepSessionId,
+  ip,
+}) => {
+  const [results] = await pool.query(
+    "CALL sp_change_my_password(?, ?, ?, ?)",
+    [userId ?? null, newPasswordHash ?? null, keepSessionId ?? null, ip ?? null]
+  );
+
+  const status = results[0][0];
+  const data = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data,
+  };
+};
+
+// Calls sp_reset_user_password (actor sets a temporary password for the target user).
+// Result set 1: { error_code, error_message }
+// Result set 2 (if the SP returns one): extra details
+export const resetUserPassword = async ({
+  actorId,
+  targetId,
+  tempPasswordHash,
+  ip,
+}) => {
+  const [results] = await pool.query(
+    "CALL sp_reset_user_password(?, ?, ?, ?)",
+    [actorId ?? null, targetId ?? null, tempPasswordHash ?? null, ip ?? null]
+  );
+
+  const status = results[0][0];
+  const data = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data,
+  };
+};
