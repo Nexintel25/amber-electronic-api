@@ -8,8 +8,8 @@ import {
 const router = express.Router();
 
 // public: the external pinger has no login, the HEALTH_KEY query param is checked instead
-router.get("/health", health);
-router.get(
+router.post("/health", health);
+router.post(
   "/admin/system-overview",
   authenticate,
   roleGuard("super_admin"),
