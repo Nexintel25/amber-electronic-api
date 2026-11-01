@@ -30,13 +30,21 @@ export const getBuildingComplaintTypes = async ({ userId, buildingId }) => {
 // Calls sp_get_complaint_categories.
 // Result set 1: { error_code, error_message }
 // Result set 2 (only on success): category rows { id, code, name, icon }
+// Result set 3 (only on success): subcategory rows { id, category_id, code, name }
+// Subcategories are nested under their category as `subcategories`, so data stays an array.
 export const getComplaintCategories = async ({ onlyActive }) => {
   const [results] = await pool.query("CALL sp_get_complaint_categories(?)", [
     onlyActive ? 1 : 0,
   ]);
 
   const status = results[0][0];
-  const data = Array.isArray(results[1]) ? results[1] : [];
+  const categories = Array.isArray(results[1]) ? results[1] : [];
+  const subcategories = Array.isArray(results[2]) ? results[2] : [];
+
+  const data = categories.map((category) => ({
+    ...category,
+    subcategories: subcategories.filter((s) => s.category_id === category.id),
+  }));
 
   return {
     code: status.error_code,
