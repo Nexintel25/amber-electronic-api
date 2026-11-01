@@ -216,7 +216,7 @@ export const getPmVendors = async (req, res) => {
   }
 };
 
-// sp_pm_worker_detail / sp_set_pm_vendors: only 0 and 5000 are known here,
+// sp_pm_worker_detail: only 0 and 5000 are known here,
 // any other SP error code falls back to 400
 const PM_COMMON_STATUS_BY_CODE = {
   0: 200,
@@ -249,6 +249,17 @@ export const getPmWorkerDetail = async (req, res) => {
   }
 };
 
+// sp_set_pm_vendors error code -> HTTP status
+const SET_PM_VENDORS_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Only super admin can assign vendors to a PM
+  1701: 404, // Project manager not found
+  1702: 404, // One or more vendors not found or inactive
+  1703: 400, // vendor_ids must be a JSON array like [1,2]
+  5000: 500, // Database error
+};
+
 export const setPmVendors = async (req, res) => {
   try {
     // TODO: take this only from req.user once auth middleware is added
@@ -260,10 +271,11 @@ export const setPmVendors = async (req, res) => {
       vendorIds: req.body.vendor_ids,
     });
 
-    return res.status(PM_COMMON_STATUS_BY_CODE[result.code] ?? 400).json({
+    return res.status(SET_PM_VENDORS_STATUS_BY_CODE[result.code] ?? 400).json({
       success: result.code === 0,
       code: result.code,
       message: result.message,
+      vendor_count: result.vendorCount,
       data: result.data,
     });
   } catch (err) {

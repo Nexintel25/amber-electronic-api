@@ -6,6 +6,9 @@ import {
   loginSuccess,
   changeMyPassword,
   resetUserPassword,
+  refreshSession,
+  logout as logoutModel,
+  checkSession as checkSessionModel,
 } from "../models/authModel.js";
 
 const ACCESS_TOKEN_TTL = process.env.JWT_ACCESS_EXPIRES_IN || "15m";
@@ -27,6 +30,36 @@ const STATUS_BY_CODE = {
   1410: 400, // Valid target user id is required
   5000: 500, // Database error
 };
+
+// only the SHA-256 hash of a refresh token is ever stored
+const hashToken = (token) =>
+  crypto.createHash("sha256").update(token).digest("hex");
+
+// Login and refresh both use these two helpers, so they issue identical tokens.
+// Refresh token: random opaque string; only its hash goes to the DB.
+const newRefreshToken = () => {
+  const token = crypto.randomBytes(48).toString("hex");
+  return {
+    token,
+    hash: hashToken(token),
+    expiresAt: new Date(Date.now() + REFRESH_TOKEN_DAYS * 86400000),
+  };
+};
+
+// Access token: short-lived JWT; sid = session id (needed for logout / check-session)
+const signAccessToken = (user, sessionId) =>
+  jwt.sign(
+    {
+      id: user.id ?? user.user_id,
+      role: user.role,
+      email: user.email,
+      vendor_id: user.vendor_id ?? null,
+      sid: sessionId,
+      must_change_password: user.must_change_password ?? 0,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: ACCESS_TOKEN_TTL }
+  );
 
 const fail = (res, code, message, extra = {}) =>
   res.status(STATUS_BY_CODE[code] ?? 400).json({
@@ -81,14 +114,13 @@ export const login = async (req, res) => {
       });
     }
 
-    // 3. issue tokens; only the SHA-256 hash of the refresh token is stored
+    // 3. new refresh token; only its SHA-256 hash is stored with the session
     const userId = user.id ?? user.user_id;
-    const refreshToken = crypto.randomBytes(48).toString("hex");
-    const refreshTokenHash = crypto
-      .createHash("sha256")
-      .update(refreshToken)
-      .digest("hex");
-    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_DAYS * 86400000);
+    const {
+      token: refreshToken,
+      hash: refreshTokenHash,
+      expiresAt,
+    } = newRefreshToken();
 
     const session = await loginSuccess({
       userId,
@@ -112,11 +144,7 @@ export const login = async (req, res) => {
     // sid = current session id, used to keep this session alive on password change
     const sessionId = session.data?.session_id ?? session.data?.id ?? null;
 
-    const accessToken = jwt.sign(
-      { id: userId, role: user.role, email: user.email, sid: sessionId },
-      process.env.JWT_SECRET,
-      { expiresIn: ACCESS_TOKEN_TTL }
-    );
+    const accessToken = signAccessToken(user, sessionId);
 
     return res.status(200).json({
       success: true,
@@ -253,6 +281,139 @@ export const resetPassword = async (req, res) => {
     });
   } catch (err) {
     console.error("resetPassword error:", err);
+    return fail(res, 5000, `Database error: ${err.message}`);
+  }
+};
+
+// sp_refresh_session error code -> HTTP status.
+// Every failure is 401 so the app sends the user back to login.
+// (1410 means "invalid refresh token" here, not the 1410 of STATUS_BY_CODE)
+const REFRESH_STATUS_BY_CODE = {
+  0: 200,
+  1404: 401, // User not found or inactive (session revoked)
+  1410: 401, // Invalid refresh token
+  1411: 401, // Refresh token reused, session revoked
+  1412: 401, // Session was revoked
+  1413: 401, // Session expired
+  5000: 500, // Database error
+};
+
+// Public (the access token may already be expired): takes the refresh token from login,
+// returns a new access token + a NEW refresh token. The old refresh token stops working.
+export const refreshToken = async (req, res) => {
+  try {
+    const { refresh_token } = req.body ?? {};
+
+    if (!refresh_token || typeof refresh_token !== "string") {
+      return res
+        .status(401)
+        .json({ success: false, code: 1410, message: "Invalid refresh token" });
+    }
+
+    const next = newRefreshToken();
+    const expiresAt = next.expiresAt;
+
+    const result = await refreshSession({
+      oldHash: hashToken(refresh_token),
+      newHash: next.hash,
+      newExpiresAt: expiresAt,
+      ip: req.ip,
+      userAgent: req.get("user-agent"),
+    });
+
+    if (result.code !== 0 || !result.user) {
+      return res.status(REFRESH_STATUS_BY_CODE[result.code] ?? 401).json({
+        success: false,
+        code: result.code,
+        message: result.message,
+      });
+    }
+
+    const { user, sessionId } = result;
+    const accessToken = signAccessToken(user, sessionId);
+
+    return res.status(200).json({
+      success: true,
+      code: 0,
+      message: "Token refreshed",
+      data: {
+        user,
+        session_id: sessionId,
+        access_token: accessToken,
+        refresh_token: next.token,
+        refresh_token_expires_at: expiresAt,
+      },
+    });
+  } catch (err) {
+    console.error("refreshToken error:", err);
+    return fail(res, 5000, `Database error: ${err.message}`);
+  }
+};
+
+// Requires authenticate middleware (req.user = { id, sid })
+// Default: logs out only the current session (sid from the access token).
+// all: true (or all_devices: true) -> logs out every session of the user.
+export const logout = async (req, res) => {
+  try {
+    const { all, all_devices } = req.body ?? {};
+    const { id: userId, sid } = req.user;
+
+    const flag = all ?? all_devices;
+    const allDevices = flag === true || flag === 1 || flag === "true" || flag === "1";
+
+    // NULL session id means "all sessions" in the SP, so never send NULL by accident
+    if (!allDevices && !sid) {
+      return res.status(400).json({
+        success: false,
+        code: 1414,
+        message: "Session id missing in token, send all: true to log out everywhere",
+      });
+    }
+
+    const result = await logoutModel({
+      userId,
+      sessionId: allDevices ? null : sid,
+    });
+
+    if (result.code !== 0) {
+      return fail(res, result.code, result.message);
+    }
+
+    return res.status(200).json({
+      success: true,
+      code: 0,
+      message: result.message || "Logged out",
+      data: { sessions_closed: result.sessionsClosed },
+    });
+  } catch (err) {
+    console.error("logout error:", err);
+    return fail(res, 5000, `Database error: ${err.message}`);
+  }
+};
+
+// Requires authenticate middleware (req.user = { id, sid })
+// Tells the app whether the current session is still open (not logged out / revoked /
+// expired, user active). A valid JWT alone does not prove that for its last 15 minutes.
+export const checkSession = async (req, res) => {
+  try {
+    const { id: userId, sid } = req.user;
+
+    const result = sid
+      ? await checkSessionModel({ userId, sessionId: sid })
+      : { code: 0, message: "Session id missing in token", sessionOpen: false };
+
+    if (result.code !== 0) {
+      return fail(res, result.code, result.message);
+    }
+
+    return res.status(200).json({
+      success: true,
+      code: 0,
+      message: result.message,
+      data: { session_id: sid ?? null, session_open: result.sessionOpen },
+    });
+  } catch (err) {
+    console.error("checkSession error:", err);
     return fail(res, 5000, `Database error: ${err.message}`);
   }
 };

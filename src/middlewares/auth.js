@@ -15,9 +15,15 @@ export const authenticate = (req, res, next) => {
     req.user = jwt.verify(token, process.env.JWT_SECRET);
     return next();
   } catch (err) {
-    return res
-      .status(401)
-      .json({ success: false, code: 1401, message: "Invalid or expired access token" });
+    // TOKEN_EXPIRED -> the app calls /api/auth/refresh and retries once;
+    // TOKEN_INVALID -> the app goes to login
+    const expired = err.name === "TokenExpiredError";
+    return res.status(401).json({
+      success: false,
+      code: 1401,
+      error_code: expired ? "TOKEN_EXPIRED" : "TOKEN_INVALID",
+      message: expired ? "Access token expired" : "Invalid access token",
+    });
   }
 };
 

@@ -177,9 +177,10 @@ export const getPmWorkerDetail = async ({ userId, workerId }) => {
   };
 };
 
-// Calls sp_set_pm_vendors.
-// Result set 1: { error_code, error_message }
-// Result set 2 (only on success, if the SP returns it): vendors now mapped to the PM
+// Calls sp_set_pm_vendors (super admin only). Replaces ALL vendors of the PM with vendorIds;
+// an empty array [] removes every vendor from the PM.
+// Result set 1: { error_code, error_message, vendor_count }
+// Result set 2 (only on success): vendors now mapped to the PM { vendor_id, company_name, contact_name }
 export const setPmVendors = async ({ userId, pmId, vendorIds }) => {
   const [results] = await pool.query("CALL sp_set_pm_vendors(?, ?, ?)", [
     userId ?? null,
@@ -198,6 +199,7 @@ export const setPmVendors = async ({ userId, pmId, vendorIds }) => {
   return {
     code: status.error_code,
     message: status.error_message,
+    vendorCount: status.vendor_count,
     data,
   };
 };

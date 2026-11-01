@@ -114,3 +114,73 @@ export const resetUserPassword = async ({
     data,
   };
 };
+
+// Calls sp_refresh_session (rotates the refresh token of one session).
+// Result set 1: { error_code, error_message, session_id }
+// Result set 2 (only on success): user row { id, name, email, phone, role, vendor_id, must_change_password }
+// Reusing an already rotated token revokes the whole session (1411).
+export const refreshSession = async ({
+  oldHash,
+  newHash,
+  newExpiresAt,
+  ip,
+  userAgent,
+}) => {
+  const [results] = await pool.query(
+    "CALL sp_refresh_session(?, ?, ?, ?, ?)",
+    [
+      oldHash ?? null,
+      newHash ?? null,
+      newExpiresAt ?? null,
+      ip ?? null,
+      // column is VARCHAR(500)
+      userAgent ? String(userAgent).slice(0, 500) : null,
+    ]
+  );
+
+  const status = results[0][0];
+  const user = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    sessionId: status.session_id ?? null,
+    user,
+  };
+};
+
+// Calls sp_logout (revokes sessions of the user).
+// sessionId given -> only that session; NULL -> ALL active sessions of the user.
+// Result set 1: { error_code, error_message, sessions_closed }
+export const logout = async ({ userId, sessionId }) => {
+  const [results] = await pool.query("CALL sp_logout(?, ?)", [
+    userId ?? null,
+    sessionId ?? null,
+  ]);
+
+  const status = results[0][0];
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    sessionsClosed: status.sessions_closed ?? 0,
+  };
+};
+
+// Calls sp_check_session (is this session still usable?).
+// Open = session not revoked, not expired, and the user is active.
+// Result set 1: { error_code, error_message, session_open (1 / 0) }
+export const checkSession = async ({ userId, sessionId }) => {
+  const [results] = await pool.query("CALL sp_check_session(?, ?)", [
+    userId ?? null,
+    sessionId ?? null,
+  ]);
+
+  const status = results[0][0];
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    sessionOpen: Number(status.session_open) === 1,
+  };
+};
