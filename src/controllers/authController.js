@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
+import { waitUntil } from "@vercel/functions";
 import {
   getLoginUser,
   loginSuccess,
@@ -9,7 +10,11 @@ import {
   refreshSession,
   logout as logoutModel,
   checkSession as checkSessionModel,
+  forgotPasswordRequest,
+  forgotPasswordConfirm,
 } from "../models/authModel.js";
+import { otpMail, sendMail, mailBrandName } from "../utils/mailer.js";
+import { OTP_MINUTES, generateOtp, isOtpFormat, hashOtp, otpExpiresAt } from "../utils/otp.js";
 
 const ACCESS_TOKEN_TTL = process.env.JWT_ACCESS_EXPIRES_IN || "15m";
 const REFRESH_TOKEN_DAYS = Number(process.env.REFRESH_TOKEN_DAYS) || 30;
@@ -28,6 +33,17 @@ const STATUS_BY_CODE = {
   1408: 400, // New password same as current
   1409: 401, // Current password is incorrect
   1410: 400, // Valid target user id is required
+  1601: 404, // User not found or inactive (reset by admin)
+  1603: 403, // Your role is not allowed to do this
+  2701: 400, // Invalid or expired OTP
+  2702: 429, // Too many wrong tries, request a new OTP
+  2703: 400, // Weak password / invalid password hash
+  2704: 429, // Too many OTP requests
+  2705: 400, // Valid email is required
+  2803: 404, // User to reset not found
+  2804: 400, // You cannot reset your own password, use change password
+  2805: 403, // You are not allowed to reset this user
+  2806: 400, // Invalid password hash
   5000: 500, // Database error
 };
 
@@ -236,10 +252,11 @@ export const changePassword = async (req, res) => {
 };
 
 // Requires authenticate middleware (req.user = { id }); actor permission is checked in the SP
+// Body: { user_id, temp_password? }  (the route has no :userId, so the target comes from the body)
 export const resetPassword = async (req, res) => {
   try {
-    const targetId = Number(req.params.userId);
-    const { temp_password } = req.body ?? {};
+    const { user_id, temp_password } = req.body ?? {};
+    const targetId = Number(req.params.userId ?? user_id);
 
     if (!Number.isInteger(targetId) || targetId <= 0) {
       return fail(res, 1410, "Valid target user id is required");
@@ -457,5 +474,105 @@ export const checkSession = async (req, res) => {
   } catch (err) {
     console.error("checkSession error:", err);
     return fail(res, 5000, `Database error: ${err.message}`);
+  }
+};
+
+// letters + digits, min 8 (same rule the forgot-password doc gives the app)
+const isStrongPassword = (password) =>
+  password.length >= MIN_PASSWORD_LENGTH && /[A-Za-z]/.test(password) && /\d/.test(password);
+
+const normalizeEmail = (email) => String(email ?? "").trim().toLowerCase();
+
+const FORGOT_ANSWER = "If the email is registered, an OTP has been sent";
+
+// Public. Body: { email }
+// The answer is the same for known and unknown emails, and the mail is sent after the response,
+// so neither the text nor the timing shows whether an account exists.
+export const forgotPassword = async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 150) {
+      return fail(res, 2705, "Valid email is required");
+    }
+
+    const otp = generateOtp();
+
+    const result = await forgotPasswordRequest({
+      email,
+      otpHash: hashOtp("forgot", email, otp),
+      expiresAt: otpExpiresAt(),
+      ip: req.ip,
+    });
+
+    if (result.code !== 0) {
+      return fail(res, result.code, result.message);
+    }
+
+    // mailTo is only returned for a registered, active user (and an active default mail profile)
+    const { mailTo } = result;
+    if (mailTo?.email) {
+      const job = sendMail({
+        to: mailTo.name ? { name: mailTo.name, address: mailTo.email } : mailTo.email,
+        ...otpMail({
+          toName: mailTo.name,
+          otp,
+          minutes: OTP_MINUTES,
+          purpose: "reset your password",
+          brandName: mailBrandName(),
+        }),
+      }).catch((err) => console.error("forgotPassword mail error:", err.message));
+      try {
+        waitUntil(job); // keeps a Vercel function alive until the mail is out
+      } catch {
+        // not on Vercel: the promise keeps running on its own
+      }
+    }
+
+    return res.status(200).json({ success: true, code: 0, message: FORGOT_ANSWER });
+  } catch (err) {
+    console.error("forgotPassword error:", err);
+    return fail(res, 5000, "Server error, please try again");
+  }
+};
+
+// Public. Body: { email, otp, new_password }
+// On success the password is changed, the lock is cleared and every session of the user is closed.
+export const forgotPasswordReset = async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const otp = String(req.body?.otp ?? "").trim();
+    const newPassword = String(req.body?.new_password ?? "");
+
+    if (!email || !isOtpFormat(otp)) {
+      return fail(res, 2701, "Invalid or expired OTP");
+    }
+    if (!isStrongPassword(newPassword)) {
+      return fail(
+        res,
+        2703,
+        `Password must be at least ${MIN_PASSWORD_LENGTH} characters with a letter and a number`
+      );
+    }
+
+    const result = await forgotPasswordConfirm({
+      email,
+      otpHash: hashOtp("forgot", email, otp),
+      newPasswordHash: await bcrypt.hash(newPassword, 10),
+      ip: req.ip,
+    });
+
+    if (result.code !== 0) {
+      return fail(
+        res,
+        result.code,
+        result.message,
+        result.attemptsLeft != null ? { attempts_left: result.attemptsLeft } : {}
+      );
+    }
+
+    return res.status(200).json({ success: true, code: 0, message: result.message });
+  } catch (err) {
+    console.error("forgotPasswordReset error:", err);
+    return fail(res, 5000, "Server error, please try again");
   }
 };

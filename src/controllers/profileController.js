@@ -1,12 +1,10 @@
-import crypto from "crypto";
 import {
   profileEditRequest as profileEditRequestModel,
   profileEditConfirm as profileEditConfirmModel,
   getProfileHistory as getProfileHistoryModel,
 } from "../models/profileModel.js";
 import { otpMail, sendMail, mailBrandName } from "../utils/mailer.js";
-
-const OTP_MINUTES = 10;
+import { OTP_MINUTES, generateOtp, isOtpFormat, hashOtp, otpExpiresAt } from "../utils/otp.js";
 
 // SP error code -> HTTP status
 const STATUS_BY_CODE = {
@@ -24,17 +22,6 @@ const STATUS_BY_CODE = {
   5000: 500, // Database error
 };
 
-// only the HMAC of an OTP is stored; bound to the user so one user's OTP never matches another's
-const hashOtp = (userId, otp) => {
-  const secret = process.env.OTP_SECRET;
-  if (!secret) throw new Error("OTP_SECRET is not set");
-  return crypto.createHmac("sha256", secret).update(`profile:${userId}:${otp}`).digest("hex");
-};
-
-// The SP compares this with NOW(); the database clock runs in UTC, so send UTC
-// (a JS Date would be sent in the server's local time, e.g. IST locally).
-const utcDateTime = (date) => date.toISOString().slice(0, 19).replace("T", " ");
-
 // missing -> null (keep the current value), anything else -> trimmed string
 const optionalText = (value) => (value == null ? null : String(value).trim());
 
@@ -46,7 +33,7 @@ export const requestProfileEdit = async (req, res) => {
     const { name, phone, email, photo_url } = req.body ?? {};
     const userId = req.user.id;
 
-    const otp = crypto.randomInt(0, 1000000).toString().padStart(6, "0");
+    const otp = generateOtp();
 
     const result = await profileEditRequestModel({
       userId,
@@ -55,8 +42,8 @@ export const requestProfileEdit = async (req, res) => {
       email: optionalText(email),
       // "" must reach the SP as "" (remove DP), so only missing becomes null
       photo: optionalText(photo_url),
-      otpHash: hashOtp(userId, otp),
-      expiresAt: utcDateTime(new Date(Date.now() + OTP_MINUTES * 60000)),
+      otpHash: hashOtp("profile", userId, otp),
+      expiresAt: otpExpiresAt(),
       ip: req.ip,
     });
 
@@ -114,7 +101,7 @@ export const confirmProfileEdit = async (req, res) => {
     const userId = req.user.id;
 
     // a malformed OTP never matches, so it is rejected without using up a try
-    if (!/^\d{6}$/.test(otp)) {
+    if (!isOtpFormat(otp)) {
       return res
         .status(400)
         .json({ success: false, code: 3411, message: "OTP must be 6 digits" });
@@ -122,7 +109,7 @@ export const confirmProfileEdit = async (req, res) => {
 
     const result = await profileEditConfirmModel({
       userId,
-      otpHash: hashOtp(userId, otp),
+      otpHash: hashOtp("profile", userId, otp),
       ip: req.ip,
     });
 
