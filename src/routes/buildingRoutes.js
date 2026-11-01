@@ -11,6 +11,8 @@ import {
   vendorRework,
   getReportFilterOptions,
   getPenaltyReport,
+  addOrgBuildings,
+  getAuditLogs,
 } from "../controllers/buildingController.js";
 // moved to complaintTypeController; this old URL is kept so existing callers keep working
 import { getCreatorDashboard } from "../controllers/complaintTypeController.js";
@@ -29,5 +31,7 @@ router.post("/vendorApprove", vendorApprove);
 router.post("/vendorRework", vendorRework);
 router.post("/getReportFilterOptions", getReportFilterOptions);
 router.post("/getPenaltyReport", getPenaltyReport);
+router.post("/addOrgBuildings", addOrgBuildings);
+router.post("/getAuditLogs", getAuditLogs);
 
 export default router;

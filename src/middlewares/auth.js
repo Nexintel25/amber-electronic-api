@@ -20,3 +20,13 @@ export const authenticate = (req, res, next) => {
       .json({ success: false, code: 1401, message: "Invalid or expired access token" });
   }
 };
+
+// Allows only the given roles (use after authenticate)
+export const roleGuard =
+  (...roles) =>
+  (req, res, next) => {
+    if (roles.includes(req.user?.role)) return next();
+    return res
+      .status(403)
+      .json({ success: false, code: 1403, message: "You are not allowed to do this" });
+  };

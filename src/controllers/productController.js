@@ -1,8 +1,9 @@
 import {
   getMyProfile as getMyProfileModel,
   getNotifications as getNotificationsModel,
-  markNotificationsRead as markNotificationsReadModel,
+  markNotificationsRead as markNotificationsReadModel, 
 } from "../models/productModel.js";
+
 
 // sp_get_my_profile error code -> HTTP status
 const MY_PROFILE_STATUS_BY_CODE = {
@@ -116,3 +117,6 @@ export const markNotificationsRead = async (req, res) => {
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
   }
 };
+
+
+

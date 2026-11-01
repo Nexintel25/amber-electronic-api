@@ -1,4 +1,5 @@
 import pool from "../config/db.js";
+import { mapResultSets, decimalsToNumbers } from "../utils/dbResults.js";
 
 // Calls sp_create_building_with_user.
 // Result set 1: { error_code, error_message, building_id, user_id }
@@ -326,5 +327,106 @@ export const getPenaltyReport = async ({
     summary,
     vendorSummary: rows(2),
     data: rows(3),
+  };
+};
+
+// Known result sets of sp_add_org_buildings, in order, after the status row.
+// Not named yet, so every result set comes back as section_<n> until it is listed here.
+const ADD_ORG_BUILDINGS_SECTIONS = [];
+
+// Calls sp_add_org_buildings (adds more buildings to an existing client org).
+// Result set 1: { error_code, error_message, ... }
+// Every status column except the code / message and every result set after it is
+// returned in data, so whatever the SP adds shows up without a code change.
+export const addOrgBuildings = async ({
+  createdBy,
+  creatorUserId,
+  adminUserId,
+  vendorId,
+  codePrefix,
+  city,
+  buildings,
+}) => {
+  const [results, fields] = await pool.query(
+    "CALL sp_add_org_buildings(?, ?, ?, ?, ?, ?, ?)",
+    [
+      createdBy ?? null,
+      creatorUserId ?? null, // the client user (building dropdown)
+      adminUserId ?? null, // the client_admin user, NULL = none
+      vendorId ?? null, // NULL = same vendor as the creator's existing buildings
+      codePrefix ?? null,
+      city ?? null,
+      // SP expects a JSON array of building names like ["Tower-A","Basement-1"]
+      // form-data sends it as a string already, so pass strings through as-is
+      buildings == null
+        ? null
+        : typeof buildings === "string"
+          ? buildings
+          : JSON.stringify(buildings),
+    ]
+  );
+
+  const [status] = decimalsToNumbers(results[0], fields[0]);
+  const { error_code, error_message, ...extraStatus } = status;
+
+  return {
+    code: error_code,
+    message: error_message,
+    data:
+      error_code === 0
+        ? { ...extraStatus, ...mapResultSets(results, fields, ADD_ORG_BUILDINGS_SECTIONS) }
+        : null,
+  };
+};
+
+// Known result sets of sp_get_audit_logs, in order, after the status row.
+const AUDIT_LOGS_SECTIONS = [{ key: "logs" }];
+
+// Calls sp_get_audit_logs.
+// Result set 1: { error_code, error_message, total_count? }
+// Result set 2 (only on success): one page of audit log rows (all rows when export = 1)
+// No dates given -> SP returns the last 30 days.
+// Anything the SP adds later comes back in `extra`: new status-row columns by their
+// own name, new result sets as section_<n>.
+export const getAuditLogs = async ({
+  userId,
+  search,
+  source,
+  action,
+  actorId,
+  fromDate,
+  toDate,
+  page,
+  limit,
+  isExport,
+}) => {
+  const [results, fields] = await pool.query(
+    "CALL sp_get_audit_logs(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [
+      userId ?? null,
+      search ?? null,
+      source ?? null,
+      action ?? null,
+      actorId ?? null,
+      fromDate ?? null,
+      toDate ?? null,
+      page,
+      limit,
+      isExport ? 1 : 0,
+    ]
+  );
+
+  const [status] = decimalsToNumbers(results[0], fields[0]);
+  const { error_code, error_message, total_count, ...extraStatus } = status;
+
+  const { logs = [], ...extraSections } =
+    error_code === 0 ? mapResultSets(results, fields, AUDIT_LOGS_SECTIONS) : {};
+
+  return {
+    code: error_code,
+    message: error_message,
+    total: total_count,
+    data: logs,
+    extra: { ...extraStatus, ...extraSections },
   };
 };

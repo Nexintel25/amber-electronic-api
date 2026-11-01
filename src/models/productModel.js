@@ -84,3 +84,5 @@ export const markNotificationsRead = async ({ userId, notificationId }) => {
     data,
   };
 };
+
+

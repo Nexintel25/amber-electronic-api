@@ -3,6 +3,7 @@ import {
   createUser as createUserModel,
   createVendor as createVendorModel,
   createComplaint as createComplaintModel,
+  createClientOrg as createClientOrgModel,
 } from "../models/userModel.js";
 import {
   uploadMediaFiles,
@@ -163,6 +164,7 @@ export const createComplaint = async (req, res) => {
     const {
       building_id,
       category_id,
+      subcategory_id,
       complaint_type_id,
       title,
       description,
@@ -174,6 +176,7 @@ export const createComplaint = async (req, res) => {
       location_accuracy,
       contact_name,
       contact_phone,
+      contact_designation,
       is_draft,
     } = req.body;
 
@@ -192,6 +195,7 @@ export const createComplaint = async (req, res) => {
       userId,
       buildingId: building_id,
       categoryId: category_id,
+      subcategoryId: subcategory_id,
       complaintTypeId: complaint_type_id,
       title,
       description,
@@ -203,6 +207,7 @@ export const createComplaint = async (req, res) => {
       locationAccuracy: location_accuracy,
       contactName: contact_name,
       contactPhone: contact_phone,
+      contactDesignation: contact_designation,
       media,
       isDraft: parseIsDraft(is_draft),
     });
@@ -223,6 +228,75 @@ export const createComplaint = async (req, res) => {
   } catch (err) {
     console.error("createComplaint error:", err);
     await cleanupUploads(uploadedKeys);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_create_client_org error code -> HTTP status
+const CLIENT_ORG_STATUS_BY_CODE = {
+  0: 200,
+  5000: 500, // Database error
+};
+
+export const createClientOrg = async (req, res) => {
+  try {
+    const {
+      code_prefix,
+      city,
+      vendor_id,
+      buildings,
+      creator_name,
+      creator_email,
+      creator_phone,
+      creator_password,
+      admin_name,
+      admin_email,
+      admin_phone,
+      admin_password,
+    } = req.body;
+
+    // TODO: take this only from req.user once auth middleware is added
+    const createdBy = req.user?.id ?? req.body.created_by;
+
+    if (!creator_password || !admin_password) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: "creator_password and admin_password are required",
+      });
+    }
+
+    const [creatorHash, adminHash] = await Promise.all([
+      bcrypt.hash(creator_password, 10),
+      bcrypt.hash(admin_password, 10),
+    ]);
+
+    const result = await createClientOrgModel({
+      createdBy,
+      codePrefix: code_prefix,
+      city,
+      vendorId: vendor_id || null, // "" / missing -> no vendor mapping
+      buildings,
+      creatorName: creator_name,
+      creatorEmail: creator_email,
+      creatorPhone: creator_phone,
+      creatorHash,
+      adminName: admin_name,
+      adminEmail: admin_email,
+      adminPhone: admin_phone,
+      adminHash,
+    });
+
+    return res.status(CLIENT_ORG_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("createClientOrg error:", err);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });

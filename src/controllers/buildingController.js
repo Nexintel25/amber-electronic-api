@@ -11,6 +11,8 @@ import {
   vendorRework as vendorReworkModel,
   getReportFilterOptions as getReportFilterOptionsModel,
   getPenaltyReport as getPenaltyReportModel,
+  addOrgBuildings as addOrgBuildingsModel,
+  getAuditLogs as getAuditLogsModel,
 } from "../models/buildingModel.js";
 
 // SP error code -> HTTP status
@@ -448,6 +450,113 @@ export const getPenaltyReport = async (req, res) => {
     });
   } catch (err) {
     console.error("getPenaltyReport error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_add_org_buildings error code -> HTTP status
+const ADD_ORG_BUILDINGS_STATUS_BY_CODE = {
+  0: 200,
+  5000: 500, // Database error
+};
+
+export const addOrgBuildings = async (req, res) => {
+  try {
+    const {
+      creator_user_id,
+      admin_user_id,
+      vendor_id,
+      code_prefix,
+      city,
+      buildings,
+    } = req.body;
+
+    // TODO: take this only from req.user once auth middleware is added
+    const createdBy = req.user?.id ?? req.body.created_by;
+
+    const result = await addOrgBuildingsModel({
+      createdBy,
+      creatorUserId: creator_user_id,
+      adminUserId: admin_user_id || null, // "" / missing -> no client_admin
+      vendorId: vendor_id || null, // "" / missing -> creator's existing vendor
+      codePrefix: code_prefix,
+      city,
+      buildings,
+    });
+
+    return res.status(ADD_ORG_BUILDINGS_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("addOrgBuildings error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_get_audit_logs error code -> HTTP status
+const AUDIT_LOGS_STATUS_BY_CODE = {
+  0: 200,
+  5000: 500, // Database error
+};
+
+export const getAuditLogs = async (req, res) => {
+  try {
+    const input = { ...req.query, ...req.body };
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? input.user_id;
+
+    // page >= 1, limit 1..100 (default 25)
+    const page = Math.max(parseInt(input.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(input.limit, 10) || 25, 1), 100);
+
+    // export: 1 / "1" / true / "true" -> all rows, no paging
+    const isExport =
+      input.export === 1 ||
+      input.export === true ||
+      input.export === "1" ||
+      input.export === "true";
+
+    // "" from a cleared filter means "no filter", same as missing
+    const result = await getAuditLogsModel({
+      userId,
+      search: input.search || null,
+      source: input.source || null, // e.g. "login"
+      action: input.action || null, // e.g. "FINE_WAIVED"
+      actorId: input.actor_id || null,
+      fromDate: input.from_date || null, // "YYYY-MM-DD"
+      toDate: input.to_date || null, // "YYYY-MM-DD"
+      page,
+      limit,
+      isExport,
+    });
+
+    return res.status(AUDIT_LOGS_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      // any new status column / result set the SP adds shows up here without a code change
+      ...result.extra,
+      data: result.data,
+      pagination:
+        isExport || result.total == null
+          ? null
+          : {
+              page,
+              limit,
+              total: result.total,
+              total_pages: Math.ceil(result.total / limit),
+            },
+    });
+  } catch (err) {
+    console.error("getAuditLogs error:", err);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
