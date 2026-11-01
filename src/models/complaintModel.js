@@ -1,5 +1,6 @@
 import pool from "../config/db.js";
 import { withFileUrls } from "../config/s3.js";
+import { mapResultSets } from "../utils/dbResults.js";
 
 // Calls sp_get_building_complaint_types.
 // Result set 1: { error_code, error_message }
@@ -486,6 +487,25 @@ export const getAllUsers = async ({
   };
 };
 
+// Calls sp_public_overview (no params, no login: numbers for the public landing page).
+// Result set 1: { error_code, error_message }
+// Result sets 2-4 (only on success), in order:
+//   2 kpis (single row), 3 last 10 days raised vs resolved (every day present), 4 open by category
+export const getPublicOverview = async () => {
+  const [results, fields] = await pool.query("CALL sp_public_overview()");
 
+  const status = results[0][0];
 
-
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data:
+      status.error_code === 0
+        ? mapResultSets(results, fields, [
+            { key: "kpis", single: true },
+            { key: "last_10_days" },
+            { key: "open_by_category" },
+          ])
+        : null,
+  };
+};

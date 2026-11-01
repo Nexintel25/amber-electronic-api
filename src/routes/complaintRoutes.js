@@ -16,6 +16,7 @@ import {
   adminGetTickets,
   updateTicketStatus,
   getAllUsers,
+  getPublicOverview,
 } from "../controllers/complaintController.js";
 
 const router = express.Router();
@@ -35,5 +36,7 @@ router.post("/getMyTickets", getMyTickets);
 router.post("/adminGetTickets", adminGetTickets);
 router.post("/updateTicketStatus", updateTicketStatus);
 router.post("/getAllUsers", getAllUsers);
+// public: landing page numbers, no login
+router.post("/getPublicOverview", getPublicOverview);
 
 export default router;

@@ -14,6 +14,7 @@ import {
   adminGetTickets as adminGetTicketsModel,
   updateTicketStatus as updateTicketStatusModel,
   getAllUsers as getAllUsersModel,
+  getPublicOverview as getPublicOverviewModel,
 } from "../models/complaintModel.js";
 import { kickEmails } from "../utils/emailQueue.js";
 import {
@@ -717,5 +718,30 @@ export const getAllUsers = async (req, res) => {
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_public_overview error code -> HTTP status
+const PUBLIC_OVERVIEW_STATUS_BY_CODE = {
+  0: 200,
+  5000: 503, // Overview is not available right now
+};
+
+// Public (no login): only totals, no names or complaint details
+export const getPublicOverview = async (req, res) => {
+  try {
+    const result = await getPublicOverviewModel();
+
+    return res.status(PUBLIC_OVERVIEW_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("getPublicOverview error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: "Overview is not available right now" });
   }
 };

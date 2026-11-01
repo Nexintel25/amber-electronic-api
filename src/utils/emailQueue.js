@@ -20,7 +20,7 @@ const sendBatch = async (rows) => {
 
         const mail = complaintMail({
           toName: row.toName,
-          title: row.title,
+          title: [row.complaintNo, row.complaintTitle].filter(Boolean).join(": ") || null,
           message: row.message,
           complaintId: row.complaintId,
           brandName: row.fromName,
@@ -35,15 +35,16 @@ const sendBatch = async (rows) => {
           ...mail,
         });
 
-        return { id: row.notificationId, ok: 1, error: null };
+        return { id: row.notificationId, ok: true, error: null };
       } catch (err) {
         // only the reason is stored, never credentials
-        return { id: row.notificationId, ok: 0, error: String(err.message || err).slice(0, 255) };
+        return { id: row.notificationId, ok: false, error: String(err.message || err).slice(0, 200) };
       }
     })
   );
 
-  await markNotificationsEmailed({ results: outcomes });
+  const marked = await markNotificationsEmailed({ results: outcomes });
+  if (marked.code !== 0) throw new Error(marked.message);
   return outcomes;
 };
 

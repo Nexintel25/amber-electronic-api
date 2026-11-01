@@ -10,6 +10,12 @@ import { dispatchEmails } from "../utils/emailQueue.js";
 // SP error code -> HTTP status (any other non-zero code -> 400)
 const STATUS_BY_CODE = {
   0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Only super admin can do this
+  3201: 400, // Invalid profile data (code, name, valid from email, env prefix)
+  3202: 404, // Mail profile not found or not active
+  3203: 400, // building_ids must be a JSON array (1 to 200 ids)
+  3204: 409, // The default profile can not be switched off
   5000: 500, // Database error
 };
 
