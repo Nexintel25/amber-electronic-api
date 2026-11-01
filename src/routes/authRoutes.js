@@ -16,7 +16,7 @@ router.post("/login", login);
 router.post("/refresh", refreshToken);
 router.post("/refresh-token", refreshToken); // old URL, kept for existing callers
 router.post("/change-password", authenticate, changePassword);
-router.post("/reset-password", authenticate, resetPassword);
+router.post("/reset-password", resetPassword);
 router.post("/logout", authenticate, logout);
 router.post("/check-session", authenticate, checkSession);
 
