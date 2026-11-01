@@ -4,7 +4,7 @@ import {
   profileEditConfirm as profileEditConfirmModel,
   getProfileHistory as getProfileHistoryModel,
 } from "../models/profileModel.js";
-import { otpMail, sendMail } from "../utils/mailer.js";
+import { otpMail, sendMail, mailBrandName } from "../utils/mailer.js";
 
 const OTP_MINUTES = 10;
 
@@ -70,21 +70,18 @@ export const requestProfileEdit = async (req, res) => {
 
     // the request is stored; if the mail fails the user simply asks for a new OTP
     try {
+      // the SP returns the recipient only while an active default mail_profiles row exists
       const mailTo = result.mailTo;
-      if (!mailTo?.email) throw new Error("no usable mail profile");
+      if (!mailTo?.email) throw new Error("no active default mail profile");
 
       await sendMail({
-        envPrefix: mailTo.env_prefix,
-        fromName: mailTo.from_name,
-        fromEmail: mailTo.from_email,
-        replyTo: mailTo.reply_to,
         to: mailTo.name ? { name: mailTo.name, address: mailTo.email } : mailTo.email,
         ...otpMail({
           toName: mailTo.name,
           otp,
           minutes: OTP_MINUTES,
           purpose: "update your profile",
-          brandName: mailTo.from_name,
+          brandName: mailBrandName(),
         }),
       });
     } catch (err) {

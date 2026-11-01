@@ -4,8 +4,8 @@ import pool from "../config/db.js";
 // NULL field -> keep it; photo "" -> remove the DP, photo NULL -> keep the DP.
 // Result set 1: { error_code, error_message }
 // Result set 2 (only on success): { name, email, profile_code, from_name, from_email, reply_to, env_prefix }
-//   = the user's CURRENT name / email (where the OTP goes) + the brand to send it as.
-//   Empty when no mail profile is usable.
+//   = the user's CURRENT name / email (where the OTP goes); the profile columns are ignored.
+//   Empty when mail_profiles has no active default row.
 export const profileEditRequest = async ({
   userId,
   name,

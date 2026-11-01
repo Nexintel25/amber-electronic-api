@@ -1,37 +1,37 @@
 import nodemailer from "nodemailer";
 
-// One transporter per brand, keyed by env_prefix (AMBER -> AMBER_SMTP_HOST, AMBER_SMTP_PORT ...).
-// A brand without its own block falls back to the plain SMTP_* block.
-// SMTP passwords live only in the environment, never in the database.
-const transporters = new Map();
+// Every mail (complaint, OTP) goes out from ONE sender, read only from the environment:
+// SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS + MAIL_FROM_NAME / MAIL_FROM_EMAIL / MAIL_REPLY_TO.
+// The brand columns of mail_profiles are not used for sending.
+let transporter = null;
 
-const smtpConfig = (envPrefix) => {
-  const read = (name) =>
-    (envPrefix && process.env[`${envPrefix}_SMTP_${name}`]) || process.env[`SMTP_${name}`];
-
-  const host = read("HOST");
-  if (!host) return null;
-
-  const port = Number(read("PORT")) || 587;
+const sender = () => {
+  const fromEmail = process.env.MAIL_FROM_EMAIL || process.env.SMTP_USER;
+  if (!process.env.SMTP_HOST || !fromEmail) {
+    throw new Error("SMTP / MAIL_FROM_EMAIL is not configured");
+  }
   return {
-    host,
-    port,
-    secure: port === 465, // 465 = TLS from the start, 587 = STARTTLS
-    auth: { user: read("USER"), pass: read("PASS") },
+    fromName: process.env.MAIL_FROM_NAME || "",
+    fromEmail,
+    replyTo: process.env.MAIL_REPLY_TO || undefined,
   };
 };
 
-const getTransporter = (envPrefix) => {
-  const key = envPrefix || "DEFAULT";
-  if (!transporters.has(key)) {
-    const config = smtpConfig(envPrefix);
-    if (!config) {
-      throw new Error(`SMTP not configured for ${envPrefix ? `${envPrefix}_SMTP_*` : "SMTP_*"}`);
-    }
-    transporters.set(key, nodemailer.createTransport(config));
+const getTransporter = () => {
+  if (!transporter) {
+    const port = Number(process.env.SMTP_PORT) || 587;
+    transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port,
+      secure: port === 465, // 465 = SSL from the start, any other port = STARTTLS
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    });
   }
-  return transporters.get(key);
+  return transporter;
 };
+
+// name shown at the bottom of every mail
+export const mailBrandName = () => process.env.MAIL_FROM_NAME || "";
 
 // all user text goes through this before it is put into HTML
 export const escapeHtml = (value) =>
@@ -100,14 +100,13 @@ export const otpMail = ({ toName, otp, minutes, purpose, brandName }) => {
   return { subject, text, html };
 };
 
-// Sends one mail as the given brand. The from address always comes from the
-// brand profile in the database, never from user input.
-export const sendMail = async ({ envPrefix, fromName, fromEmail, replyTo, to, subject, text, html }) => {
-  if (!fromEmail) throw new Error("no usable mail profile");
+// Sends one mail from the env sender. The from address never comes from user input or the database.
+export const sendMail = async ({ to, subject, text, html }) => {
+  const { fromName, fromEmail, replyTo } = sender();
 
-  return getTransporter(envPrefix).sendMail({
+  return getTransporter().sendMail({
     from: fromName ? { name: fromName, address: fromEmail } : fromEmail,
-    replyTo: replyTo || undefined,
+    replyTo,
     to,
     subject,
     text,

@@ -3,7 +3,7 @@ import {
   claimPendingEmails,
   markNotificationsEmailed,
 } from "../models/emailModel.js";
-import { complaintMail, sendMail } from "./mailer.js";
+import { complaintMail, sendMail, mailBrandName } from "./mailer.js";
 
 const BATCH_SIZE = 20;
 const MAX_BATCHES = 5;
@@ -23,14 +23,11 @@ const sendBatch = async (rows) => {
           title: [row.complaintNo, row.complaintTitle].filter(Boolean).join(": ") || null,
           message: row.message,
           complaintId: row.complaintId,
-          brandName: row.fromName,
+          brandName: mailBrandName(),
         });
 
+        // sender = MAIL_FROM_* from the env; the row's brand profile is not used
         await sendMail({
-          envPrefix: row.envPrefix,
-          fromName: row.fromName,
-          fromEmail: row.fromEmail,
-          replyTo: row.replyTo,
           to: row.toName ? { name: row.toName, address: row.toEmail } : row.toEmail,
           ...mail,
         });

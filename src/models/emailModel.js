@@ -19,7 +19,8 @@ export const getMailProfiles = async ({ userId }) => {
 };
 
 // Calls sp_set_mail_profile (creates or updates a brand profile by code).
-// SMTP passwords are never stored: env_prefix only names the env block (AMBER -> AMBER_SMTP_*).
+// Not used for sending any more (the sender comes from MAIL_FROM_* in the env), but
+// sp_claim_pending_emails still needs one active default row to return recipients.
 // Result set 1: { error_code, error_message } (nothing else)
 export const setMailProfile = async ({
   userId,
@@ -99,7 +100,7 @@ export const emailPreference = async ({ userId, enabled }) => {
 // rows of users who switched mails off, too old or tried 5 times are skipped by the SP).
 // Result set 1: { error_code, error_message }
 // Result set 2 (only on success): one row per mail: notification + recipient + complaint +
-//   the brand profile of the complaint's building (or the default one; NULL if none is usable)
+//   profile columns (ignored: the sender comes from the env)
 export const claimPendingEmails = async ({ limit }) => {
   const [results] = await pool.query("CALL sp_claim_pending_emails(?)", [limit]);
 
@@ -118,10 +119,6 @@ export const claimPendingEmails = async ({ limit }) => {
     buildingName: row.building_name,
     toEmail: row.user_email,
     toName: row.user_name,
-    fromName: row.from_name,
-    fromEmail: row.from_email,
-    replyTo: row.reply_to,
-    envPrefix: row.env_prefix,
   }));
 };
 
