@@ -5,6 +5,7 @@ import {
   createComplaint as createComplaintModel,
   createClientOrg as createClientOrgModel,
 } from "../models/userModel.js";
+import { kickEmails } from "../utils/emailQueue.js";
 import {
   uploadMediaFiles,
   uploadBase64Media,
@@ -215,6 +216,7 @@ export const createComplaint = async (req, res) => {
     if (result.code !== 0) await cleanupUploads(uploadedKeys);
 
     // TODO: send FCM push to result.pushRecipients, then set notifications.is_pushed = 1
+    if (result.code === 0) kickEmails(); // mails the notification rows the SP just inserted
 
     return res.status(COMPLAINT_STATUS_BY_CODE[result.code] ?? 400).json({
       success: result.code === 0,

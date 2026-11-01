@@ -12,6 +12,7 @@ import {
   getCreatorDashboard as getCreatorDashboardModel,
   getWorkerDashboard as getWorkerDashboardModel,
 } from "../models/complaintTypeModel.js";
+import { kickEmails } from "../utils/emailQueue.js";
 
 // SP error code -> HTTP status
 const STATUS_BY_CODE = {
@@ -396,6 +397,7 @@ export const waiveFine = async (req, res) => {
     });
 
     // TODO: send FCM push to result.pushRecipients, then set notifications.is_pushed = 1
+    if (result.code === 0) kickEmails(); // mails the notification rows the SP just inserted
 
     return res.status(WAIVE_FINE_STATUS_BY_CODE[result.code] ?? 400).json({
       success: result.code === 0,

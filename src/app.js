@@ -12,6 +12,7 @@ import complaintRoutes from "./routes/complaintRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 import systemMonitorRoutes from "./routes/systemMonitorRoutes.js";
+import emailRoutes from "./routes/emailRoutes.js";
 import { systemMetrics } from "./middlewares/systemMetrics.js";
 
 const app = express();
@@ -32,11 +33,13 @@ app.use(
 
 // morgan for scrutiny on api requests
 const morganFormat = process.env.NODE_ENV === "development" ? "dev" : "common";
-// /api/health is skipped: it carries HEALTH_KEY in the query string and runs every minute
+// /api/health and /api/internal/send-emails are skipped: they carry HEALTH_KEY / CRON_KEY
+// in the query string and run every minute
 // (originalUrl, because req.path is already stripped to "/health" inside the /api router)
+const UNLOGGED_PATHS = new Set(["/api/health", "/api/internal/send-emails"]);
 app.use(
   morgan(morganFormat, {
-    skip: (req) => req.originalUrl.split("?")[0] === "/api/health",
+    skip: (req) => UNLOGGED_PATHS.has(req.originalUrl.split("?")[0]),
   })
 );
 
@@ -51,6 +54,7 @@ app.use("/api/complaint-types", complaintTypeRoutes);
 app.use("/api/complaints", complaintRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api", systemMonitorRoutes); // GET /api/health, GET /api/admin/system-overview
+app.use("/api", emailRoutes); // cron send-emails, admin mail-profiles, me/email-notifications
 
 app.get("/", (req, res) => {
   res.json({ message: "Amber Electronic API is running" });

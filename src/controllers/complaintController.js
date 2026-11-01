@@ -15,6 +15,7 @@ import {
   updateTicketStatus as updateTicketStatusModel,
   getAllUsers as getAllUsersModel,
 } from "../models/complaintModel.js";
+import { kickEmails } from "../utils/emailQueue.js";
 import {
   uploadMediaFiles,
   uploadBase64Media,
@@ -239,6 +240,7 @@ export const assignWorker = async (req, res) => {
     });
 
     // TODO: send FCM push to result.pushRecipients, then set notifications.is_pushed = 1
+    if (result.code === 0) kickEmails(); // mails the notification rows the SP just inserted
 
     return res.status(ASSIGN_WORKER_STATUS_BY_CODE[result.code] ?? 400).json({
       success: result.code === 0,
@@ -393,6 +395,7 @@ export const workerSubmit = async (req, res) => {
     if (result.code !== 0) await cleanupUploads(uploadedKeys);
 
     // TODO: send FCM push to result.pushRecipients, then set notifications.is_pushed = 1
+    if (result.code === 0) kickEmails(); // mails the notification rows the SP just inserted
 
     return res.status(WORKER_SUBMIT_STATUS_BY_CODE[result.code] ?? 400).json({
       success: result.code === 0,
@@ -499,6 +502,7 @@ export const createSupportTicket = async (req, res) => {
     });
 
     // TODO: send FCM push to result.pushRecipients, then set notifications.is_pushed = 1
+    if (result.code === 0) kickEmails(); // mails the notification rows the SP just inserted
 
     return res.status(SUPPORT_TICKET_STATUS_BY_CODE[result.code] ?? 400).json({
       success: result.code === 0,
@@ -644,6 +648,7 @@ export const updateTicketStatus = async (req, res) => {
     });
 
     // TODO: send FCM push to result.pushRecipients, then set notifications.is_pushed = 1
+    if (result.code === 0) kickEmails(); // mails the notification rows the SP just inserted
 
     return res.status(UPDATE_TICKET_STATUS_BY_CODE[result.code] ?? 400).json({
       success: result.code === 0,
