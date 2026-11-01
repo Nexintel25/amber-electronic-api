@@ -355,14 +355,44 @@ export const refreshToken = async (req, res) => {
 // all: true (or all_devices: true) -> logs out every session of the user.
 export const logout = async (req, res) => {
   try {
-    const { all, all_devices } = req.body ?? {};
+    // Body mirrors sp_logout(user_id, session_id); all fields optional
+    const { user_id, session_id, all, all_devices } = req.body ?? {};
     const { id: userId, sid } = req.user;
 
     const flag = all ?? all_devices;
     const allDevices = flag === true || flag === 1 || flag === "true" || flag === "1";
 
+    // user_id can only be your own: the token decides whose sessions are closed
+    if (user_id != null && Number(user_id) !== Number(userId)) {
+      return res.status(403).json({
+        success: false,
+        code: 1415,
+        message: "user_id does not match the logged-in user",
+      });
+    }
+
+    const hasSessionId = session_id != null && session_id !== "";
+    if (hasSessionId && !(Number.isInteger(Number(session_id)) && Number(session_id) > 0)) {
+      return res.status(400).json({
+        success: false,
+        code: 1416,
+        message: "session_id must be a positive integer",
+      });
+    }
+
+    if (hasSessionId && allDevices) {
+      return res.status(400).json({
+        success: false,
+        code: 1417,
+        message: "Send either session_id or all: true, not both",
+      });
+    }
+
+    // session_id from body -> that session; all -> every session; else this device's session
+    const sessionId = allDevices ? null : hasSessionId ? Number(session_id) : sid;
+
     // NULL session id means "all sessions" in the SP, so never send NULL by accident
-    if (!allDevices && !sid) {
+    if (!allDevices && !sessionId) {
       return res.status(400).json({
         success: false,
         code: 1414,
@@ -370,20 +400,32 @@ export const logout = async (req, res) => {
       });
     }
 
-    const result = await logoutModel({
-      userId,
-      sessionId: allDevices ? null : sid,
-    });
+    const result = await logoutModel({ userId, sessionId });
 
     if (result.code !== 0) {
       return fail(res, result.code, result.message);
+    }
+
+    // an explicit session_id that closed nothing: wrong id, someone else's, or already logged out
+    if (hasSessionId && result.sessionsClosed === 0) {
+      return res.status(404).json({
+        success: false,
+        code: 1418,
+        message: "Session not found or already logged out",
+        data: { user_id: userId, session_id: sessionId, sessions_closed: 0 },
+      });
     }
 
     return res.status(200).json({
       success: true,
       code: 0,
       message: result.message || "Logged out",
-      data: { sessions_closed: result.sessionsClosed },
+      data: {
+        user_id: userId,
+        session_id: sessionId, // null = all sessions
+        current_session: allDevices || Number(sessionId) === Number(sid), // was this device logged out?
+        sessions_closed: result.sessionsClosed,
+      },
     });
   } catch (err) {
     console.error("logout error:", err);
