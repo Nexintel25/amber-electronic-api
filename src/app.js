@@ -13,9 +13,13 @@ import authRoutes from "./routes/authRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 import systemMonitorRoutes from "./routes/systemMonitorRoutes.js";
 import emailRoutes from "./routes/emailRoutes.js";
+import profileRoutes from "./routes/profileRoutes.js";
 import { systemMetrics } from "./middlewares/systemMetrics.js";
 
 const app = express();
+
+// behind Vercel's proxy: req.ip = the real client IP (stored with profile edits / logins)
+app.set("trust proxy", 1);
 
 // for api input in body (json)
 app.use(express.json({ limit: "25mb" }));
@@ -55,6 +59,7 @@ app.use("/api/complaints", complaintRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api", systemMonitorRoutes); // GET /api/health, GET /api/admin/system-overview
 app.use("/api", emailRoutes); // cron send-emails, admin mail-profiles, me/email-notifications
+app.use("/api/profile", profileRoutes); // edit/request, edit/confirm, history
 
 app.get("/", (req, res) => {
   res.json({ message: "Amber Electronic API is running" });

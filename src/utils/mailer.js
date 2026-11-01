@@ -76,6 +76,30 @@ export const complaintMail = ({ toName, title, message, complaintId, brandName }
   return { subject, text, html };
 };
 
+// OTP mail (profile edit). The OTP is only ever put into the mail, never logged.
+export const otpMail = ({ toName, otp, minutes, purpose, brandName }) => {
+  const subject = `${otp} is your OTP to ${purpose}`;
+  const greeting = toName ? `Hello ${toName},` : "Hello,";
+  const note = `This OTP is valid for ${minutes} minutes and can be used once. If you did not ask for it, ignore this mail; nothing will change.`;
+
+  const text = [greeting, "", `Your OTP to ${purpose} is ${otp}`, "", note, "", brandName || ""]
+    .join("\n")
+    .trim();
+
+  const html = `<!doctype html>
+<html><body style="margin:0;padding:24px;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;color:#1f2933">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:8px;padding:24px">
+    <p style="margin:0 0 12px">${escapeHtml(greeting)}</p>
+    <p style="margin:0 0 12px">Your OTP to ${escapeHtml(purpose)} is</p>
+    <p style="margin:0 0 20px;font-size:28px;font-weight:bold;letter-spacing:6px">${escapeHtml(otp)}</p>
+    <p style="margin:0 0 20px;color:#4b5563;font-size:13px">${escapeHtml(note)}</p>
+    <p style="margin:0;color:#6b7280;font-size:12px">${escapeHtml(brandName || "")}</p>
+  </div>
+</body></html>`;
+
+  return { subject, text, html };
+};
+
 // Sends one mail as the given brand. The from address always comes from the
 // brand profile in the database, never from user input.
 export const sendMail = async ({ envPrefix, fromName, fromEmail, replyTo, to, subject, text, html }) => {
