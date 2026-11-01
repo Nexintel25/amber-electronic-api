@@ -140,3 +140,45 @@ export const markNotificationsEmailed = async ({ results: outcomes }) => {
     failed: Number(status.failed ?? 0),
   };
 };
+
+// Calls sp_forgot_password_request (stores the OTP hash; an OTP row is written even for an
+// unknown email, so the answer never shows whether an account exists).
+// Result set 1: { error_code, error_message }
+// Result set 2 (only for a registered, active email with an active default mail profile):
+//   { name, email, profile_code, from_name, from_email, reply_to, env_prefix }
+export const forgotPasswordRequest = async ({ email, otpHash, expiresAt, ip }) => {
+  const [results] = await pool.query("CALL sp_forgot_password_request(?, ?, ?, ?)", [
+    email ?? null,
+    otpHash ?? null,
+    expiresAt ?? null,
+    ip ?? null,
+  ]);
+
+  const status = results[0][0];
+  const mailTo = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    mailTo,
+  };
+};
+
+// Calls sp_forgot_password_confirm (checks the OTP, sets the new hash, closes every session).
+// Result set 1: { error_code, error_message, attempts_left }
+export const forgotPasswordConfirm = async ({ email, otpHash, newPasswordHash, ip }) => {
+  const [results] = await pool.query("CALL sp_forgot_password_confirm(?, ?, ?, ?)", [
+    email ?? null,
+    otpHash ?? null,
+    newPasswordHash ?? null,
+    ip ?? null,
+  ]);
+
+  const status = results[0][0];
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    attemptsLeft: status.attempts_left,
+  };
+};

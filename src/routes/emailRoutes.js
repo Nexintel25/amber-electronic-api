@@ -7,6 +7,8 @@ import {
   assignMailProfile,
   getEmailNotifications,
   setEmailNotifications,
+  forgotPassword,
+  forgotPasswordConfirm,
 } from "../controllers/emailController.js";
 
 const router = express.Router();
@@ -24,11 +26,12 @@ router.post(
   assignMailProfile
 );
 
+// public forgot password: 1. OTP to the email  2. OTP + new password
+router.post("/auth/forgot-password", forgotPassword);
+router.post("/auth/forgot-password-confirm", forgotPasswordConfirm);
+
 // the logged-in user's own on/off switch for complaint emails
 router.get("/me/email-notifications", authenticate, getEmailNotifications);
 router.put("/me/email-notifications", authenticate, setEmailNotifications);
 
 export default router;
-
-
-
