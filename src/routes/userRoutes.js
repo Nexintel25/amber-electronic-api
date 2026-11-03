@@ -1,4 +1,5 @@
 import express from "express";
+import { authenticate } from "../middlewares/auth.js";
 import { uploadMedia } from "../middlewares/upload.js";
 import {
   createUser,
@@ -8,6 +9,9 @@ import {
 } from "../controllers/userController.js";
 
 const router = express.Router();
+
+// every route below needs "Authorization: Bearer <access_token>"
+router.use(authenticate);
 
 router.post("/createUser", createUser);
 router.post("/createVendor", createVendor);

@@ -1,4 +1,5 @@
 import express from "express";
+import { authenticate } from "../middlewares/auth.js";
 import {
   getComplaintTypes,
   getBuildings,
@@ -16,6 +17,9 @@ import {
 } from "../controllers/complaintTypeController.js";
 
 const router = express.Router();
+
+// every route below needs "Authorization: Bearer <access_token>"
+router.use(authenticate);
 
 router.post("/getComplaintTypes", getComplaintTypes);
 router.post("/getBuildings", getBuildings);

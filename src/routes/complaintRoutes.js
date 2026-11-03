@@ -1,4 +1,5 @@
 import express from "express";
+import { authenticate } from "../middlewares/auth.js";
 import { uploadMedia } from "../middlewares/upload.js";
 import {
   getBuildingComplaintTypes,
@@ -21,6 +22,12 @@ import {
 
 const router = express.Router();
 
+// public: landing page numbers, no login
+router.post("/getPublicOverview", getPublicOverview);
+
+// every route below needs "Authorization: Bearer <access_token>"
+router.use(authenticate);
+
 router.post("/getBuildingComplaintTypes", getBuildingComplaintTypes);
 router.post("/getComplaintCategories", getComplaintCategories);
 router.post("/getComplaints", getComplaints);
@@ -36,7 +43,5 @@ router.post("/getMyTickets", getMyTickets);
 router.post("/adminGetTickets", adminGetTickets);
 router.post("/updateTicketStatus", updateTicketStatus);
 router.post("/getAllUsers", getAllUsers);
-// public: landing page numbers, no login
-router.post("/getPublicOverview", getPublicOverview);
 
 export default router;

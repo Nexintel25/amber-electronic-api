@@ -1,4 +1,5 @@
 import express from "express";
+import { authenticate } from "../middlewares/auth.js";
 import {
   createBuilding,
   // checkMedia,
@@ -18,6 +19,9 @@ import {
 import { getCreatorDashboard } from "../controllers/complaintTypeController.js";
 
 const router = express.Router();
+
+// every route below needs "Authorization: Bearer <access_token>"
+router.use(authenticate);
 
 router.post("/createBuildingWithUser", createBuilding);
 // router.post("/checkMedia", checkMedia);
