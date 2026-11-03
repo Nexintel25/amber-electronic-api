@@ -58,10 +58,10 @@ export const loginSuccess = async ({
   );
 
   // TEMP: debug sp_login_success raw response
-  console.log("sp_login_success raw results:", JSON.stringify(results, null, 2));
+  console.log("sp_login_success raw results:", results);
 
   const status = results[0][0];
-  const data = Array.isArray(results[1]) ? results[1][0] ?? null : null;
+  const data = Array.isArray(results[1]) ? results ?? null : null;
 
   return {
     code: status.error_code,

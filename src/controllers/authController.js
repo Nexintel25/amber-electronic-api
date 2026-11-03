@@ -146,9 +146,10 @@ export const login = async (req, res) => {
     if (session.code !== 0) {
       return fail(res, session.code, session.message);
     }
+console.log("ssss",session);
 
     // sid = current session id, used to keep this session alive on password change
-    const sessionId = session.data?.session_id ?? session.data?.id ?? null;
+    const sessionId = session?.data?.[0][0].session_id ?? session.data?.id ?? null;
 
     const accessToken = signAccessToken(user, sessionId);
 
