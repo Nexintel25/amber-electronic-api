@@ -12,6 +12,7 @@ import {
   waiveFine,
   getCreatorDashboard,
   getWorkerDashboard,
+  getClientAdminDashboard,
 } from "../controllers/complaintTypeController.js";
 
 const router = express.Router();
@@ -28,5 +29,6 @@ router.post("/getSatisfactionReport", getSatisfactionReport);
 router.post("/waiveFine", waiveFine);
 router.post("/getCreatorDashboard", getCreatorDashboard);
 router.post("/getWorkerDashboard", getWorkerDashboard);
+router.post("/getClientAdminDashboard", getClientAdminDashboard);
 
 export default router;

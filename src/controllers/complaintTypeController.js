@@ -11,6 +11,7 @@ import {
   waiveFine as waiveFineModel,
   getCreatorDashboard as getCreatorDashboardModel,
   getWorkerDashboard as getWorkerDashboardModel,
+  getClientAdminDashboard as getClientAdminDashboardModel,
 } from "../models/complaintTypeModel.js";
 import { kickEmails } from "../utils/emailQueue.js";
 
@@ -486,6 +487,37 @@ export const getWorkerDashboard = async (req, res) => {
     });
   } catch (err) {
     console.error("getWorkerDashboard error:", err);
+    return res
+      .status(500)
+      .json({ success: false, code: 5000, message: `Database error: ${err.message}` });
+  }
+};
+
+// sp_client_admin_dashboard error code -> HTTP status
+const CLIENT_ADMIN_DASHBOARD_STATUS_BY_CODE = {
+  0: 200,
+  1601: 404, // User not found or inactive
+  1603: 403, // Your role is not allowed to do this
+  5000: 500, // Database error
+};
+
+export const getClientAdminDashboard = async (req, res) => {
+  try {
+    const input = { ...req.query, ...req.body };
+
+    // TODO: take this only from req.user once auth middleware is added
+    const userId = req.user?.id ?? input.user_id;
+
+    const result = await getClientAdminDashboardModel({ userId });
+
+    return res.status(CLIENT_ADMIN_DASHBOARD_STATUS_BY_CODE[result.code] ?? 400).json({
+      success: result.code === 0,
+      code: result.code,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    console.error("getClientAdminDashboard error:", err);
     return res
       .status(500)
       .json({ success: false, code: 5000, message: `Database error: ${err.message}` });

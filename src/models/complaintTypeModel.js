@@ -318,3 +318,39 @@ export const getWorkerDashboard = async ({ userId, jobsLimit }) => {
     data: mapResultSets(results, fields, WORKER_DASHBOARD_SECTIONS),
   };
 };
+
+// Known result sets of sp_client_admin_dashboard, in order, after the status row.
+// single: true -> the section is one row, returned as an object instead of an array.
+const CLIENT_ADMIN_DASHBOARD_SECTIONS = [
+  { key: "kpis", single: true },
+  { key: "pipeline" }, // complaint count per status stage
+  { key: "workers" }, // worker map pins with map_status + current complaint
+  { key: "open_complaints" }, // open complaint map pins
+  { key: "activity" }, // recent events
+  { key: "daily_trend" }, // raised / resolved per day
+  { key: "by_category" },
+  { key: "sites" }, // buildings with open complaints, workers, SLA %
+];
+
+// Calls sp_client_admin_dashboard.
+// Result set 1: { error_code, error_message }
+// Result sets 2+ (only on success) are mapped by position to CLIENT_ADMIN_DASHBOARD_SECTIONS;
+// a result set the SP adds later is still returned as section_<n>.
+export const getClientAdminDashboard = async ({ userId }) => {
+  const [results, fields] = await pool.query(
+    "CALL sp_client_admin_dashboard(?)",
+    [userId ?? null]
+  );
+
+  const status = results[0][0];
+
+  if (status.error_code !== 0) {
+    return { code: status.error_code, message: status.error_message, data: null };
+  }
+
+  return {
+    code: status.error_code,
+    message: status.error_message,
+    data: mapResultSets(results, fields, CLIENT_ADMIN_DASHBOARD_SECTIONS),
+  };
+};
